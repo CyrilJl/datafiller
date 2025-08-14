@@ -304,9 +304,7 @@ class MultivariateImputer:
         print(X_imputed)
     """
 
-    def __init__(
-        self, estimator: RegressorMixin = LinearRegression(), verbose: int = 0, min_samples_train: int = 50
-    ):
+    def __init__(self, estimator: RegressorMixin = LinearRegression(), verbose: int = 0, min_samples_train: int = 50):
         self.estimator = estimator
         self.verbose = int(verbose)
         self.min_samples_train = min_samples_train
