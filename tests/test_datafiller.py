@@ -1,8 +1,10 @@
 import numpy as np
 from datafiller import DataFiller
 
+
 def generate_data(n_samples, n_features, mean, cov):
     return np.random.multivariate_normal(mean, cov, n_samples)
+
 
 def generate_missing_at_random(data, missing_rate):
     n_samples, n_features = data.shape
@@ -16,12 +18,14 @@ def generate_missing_at_random(data, missing_rate):
     data[mask] = np.nan
     return data
 
+
 def generate_consecutive_missing(data, n_missing_rows, n_missing_cols):
     n_samples, n_features = data.shape
     start_row = np.random.randint(0, n_samples - n_missing_rows)
     start_col = np.random.randint(0, n_features - n_missing_cols)
-    data[start_row:start_row + n_missing_rows, start_col:start_col + n_missing_cols] = np.nan
+    data[start_row : start_row + n_missing_rows, start_col : start_col + n_missing_cols] = np.nan
     return data
+
 
 def test_datafiller():
     n_samples = 100

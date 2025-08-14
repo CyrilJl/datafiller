@@ -3,6 +3,7 @@ This module provides the `optimask` function, a low-level utility for finding an
 optimal rectangular subset of a matrix that contains the fewest missing values.
 This is used to select the best rows and columns for training an imputation model.
 """
+
 import numpy as np
 from numba import bool_, njit, prange, uint32
 from numba.types import UniTuple
@@ -203,13 +204,13 @@ def optimask(iy, ix, rows, cols, global_matrix_size):
         kind = "stable" if step else "quicksort"
         axis = step % 2
         step += 1
-        if axis == 0: # Sort by rows
+        if axis == 0:  # Sort by rows
             p_step = (-hy).argsort(kind=kind).astype(np.uint32)
             apply_permutation(p_step, iyp, inplace=True)
             p_rows, hy = apply_p_step(p_step, p_rows, hy)
             hx = groupby_max(ixp, iyp, n_nan)
             is_pareto_ordered = is_decreasing(hx)
-        else: # Sort by columns
+        else:  # Sort by columns
             p_step = (-hx).argsort(kind=kind).astype(np.uint32)
             apply_permutation(p_step, ixp, inplace=True)
             hy = groupby_max(iyp, ixp, m_nan)

@@ -2,10 +2,12 @@ import numpy as np
 import pytest
 from datafiller._optimask import optimask
 
+
 def get_nan_indices(matrix):
     """Helper function to get NaN indices from a matrix."""
     nan_pos = np.where(np.isnan(matrix))
     return nan_pos[0].astype(np.uint32), nan_pos[1].astype(np.uint32)
+
 
 def test_optimask_no_nans():
     """Test optimask on a matrix with no NaN values."""
@@ -20,6 +22,7 @@ def test_optimask_no_nans():
     np.testing.assert_array_equal(np.sort(rows_to_keep), rows)
     np.testing.assert_array_equal(np.sort(cols_to_keep), cols)
 
+
 def test_optimask_all_nans():
     """Test optimask on a matrix that is entirely NaN."""
     m, n = 10, 10
@@ -32,6 +35,7 @@ def test_optimask_all_nans():
 
     assert len(rows_to_keep) == 0
     assert len(cols_to_keep) == 0
+
 
 def test_optimask_simple_case():
     """Test optimask with a simple and obvious optimal rectangle."""
@@ -51,6 +55,7 @@ def test_optimask_simple_case():
 
     np.testing.assert_array_equal(np.sort(rows_to_keep), expected_rows)
     np.testing.assert_array_equal(np.sort(cols_to_keep), expected_cols)
+
 
 def test_optimask_complex_case():
     """Test optimask with a more complex NaN pattern."""
@@ -75,7 +80,6 @@ def test_optimask_complex_case():
     # The algorithm should find the 5x4 area.
     expected_rows = np.array([0, 1, 3, 4, 5])
     expected_cols = np.array([0, 2, 3, 4])
-
 
     iy, ix = get_nan_indices(matrix)
     rows = np.arange(m, dtype=np.uint32)

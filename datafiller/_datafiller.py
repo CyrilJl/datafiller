@@ -1,4 +1,5 @@
 """Core implementation of the DataFiller imputer."""
+
 from typing import Iterable, Tuple, Any
 
 import numpy as np
@@ -57,7 +58,9 @@ def nan_positions(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 
 @njit(boundscheck=True, cache=True)
-def nan_positions_subset(iy: np.ndarray, ix: np.ndarray, mask_subset_rows: np.ndarray, mask_subset_cols: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def nan_positions_subset(
+    iy: np.ndarray, ix: np.ndarray, mask_subset_rows: np.ndarray, mask_subset_cols: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Finds NaN positions within a subset of rows and columns.
 
@@ -284,6 +287,7 @@ class DataFiller:
     This class uses a model-based approach to fill in missing values, where
     each feature with missing values is predicted using other features in the dataset.
     """
+
     def __init__(self, estimator: RegressorMixin = LinearRegression(), verbose: int = 0, min_samples_train: int = 50):
         """
         Initializes the DataFiller.
@@ -298,7 +302,13 @@ class DataFiller:
         self.verbose = int(verbose)
         self.min_samples_train = min_samples_train
 
-    def _validate_input(self, x: np.ndarray, rows_to_impute: None | int | Iterable[int], cols_to_impute: None | int | Iterable[int], n_nearest_features: None | float | int) -> int:
+    def _validate_input(
+        self,
+        x: np.ndarray,
+        rows_to_impute: None | int | Iterable[int],
+        cols_to_impute: None | int | Iterable[int],
+        n_nearest_features: None | float | int,
+    ) -> int:
         """
         Validates the inputs to the __call__ method.
 
@@ -329,13 +339,13 @@ class DataFiller:
             if isinstance(rows_to_impute, int):
                 rows_to_impute = [rows_to_impute]
             if not all(isinstance(i, int) for i in rows_to_impute) or not all(0 <= i < m for i in rows_to_impute):
-                raise ValueError(f"rows_to_impute must be a list of integers between 0 and {m-1}.")
+                raise ValueError(f"rows_to_impute must be a list of integers between 0 and {m - 1}.")
 
         if cols_to_impute is not None:
             if isinstance(cols_to_impute, int):
                 cols_to_impute = [cols_to_impute]
             if not all(isinstance(i, int) for i in cols_to_impute) or not all(0 <= i < n for i in cols_to_impute):
-                raise ValueError(f"cols_to_impute must be a list of integers between 0 and {n-1}.")
+                raise ValueError(f"cols_to_impute must be a list of integers between 0 and {n - 1}.")
 
         if n_nearest_features is not None:
             if isinstance(n_nearest_features, float):
@@ -351,7 +361,9 @@ class DataFiller:
 
         return n_nearest_features
 
-    def _get_sampled_cols(self, n_features: int, n_nearest_features: int | None, scores: np.ndarray | None, scores_index: int) -> np.ndarray:
+    def _get_sampled_cols(
+        self, n_features: int, n_nearest_features: int | None, scores: np.ndarray | None, scores_index: int
+    ) -> np.ndarray:
         """
         Selects the feature columns to use for imputing a specific column.
 
@@ -381,7 +393,19 @@ class DataFiller:
             return np.sort(sampled_cols)
         return np.arange(n_features)
 
-    def _impute_col(self, x: np.ndarray, x_imputed: np.ndarray, col_to_impute: int, mask_nan: np.ndarray, mask_rows_to_impute: np.ndarray, iy: np.ndarray, ix: np.ndarray, n_nearest_features: int | None, scores: np.ndarray | None, scores_index: int) -> None:
+    def _impute_col(
+        self,
+        x: np.ndarray,
+        x_imputed: np.ndarray,
+        col_to_impute: int,
+        mask_nan: np.ndarray,
+        mask_rows_to_impute: np.ndarray,
+        iy: np.ndarray,
+        ix: np.ndarray,
+        n_nearest_features: int | None,
+        scores: np.ndarray | None,
+        scores_index: int,
+    ) -> None:
         """
         Imputes all missing values in a single column.
 
@@ -410,7 +434,7 @@ class DataFiller:
 
         trainable_rows = _trainable_rows(mask_nan=mask_nan, col=col_to_impute)
         if not len(trainable_rows):
-            return # Cannot impute if no training data is available for this column
+            return  # Cannot impute if no training data is available for this column
 
         mask_trainable_rows = _index_to_mask(trainable_rows, m)
         mask_valid = ~mask_nan
@@ -438,15 +462,16 @@ class DataFiller:
                     iy=iy_trial, ix=ix_trial, rows=trainable_rows, cols=usable_cols, global_matrix_size=(m, n)
                 )
                 if not len(rows) or not len(cols):
-                    continue # Not enough data to train a model
+                    continue  # Not enough data to train a model
 
                 if len(rows) < self.min_samples_train:
-                    continue # Not enough samples to train a model
+                    continue  # Not enough samples to train a model
 
                 X_train = _subset(X=x, rows=rows, columns=cols)
                 self.estimator.fit(X=X_train, y=x[rows, col_to_impute])
-                x_imputed[index_predict, col_to_impute] = self.estimator.predict(_subset(X=x, rows=index_predict, columns=cols))
-
+                x_imputed[index_predict, col_to_impute] = self.estimator.predict(
+                    _subset(X=x, rows=index_predict, columns=cols)
+                )
 
     def __call__(
         self,
