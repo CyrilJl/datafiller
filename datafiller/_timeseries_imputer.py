@@ -57,7 +57,9 @@ class TimeSeriesImputer:
             raise ValueError("lags cannot contain 0.")
         self.lags = lags
         self.multivariate_imputer = MultivariateImputer(
-            estimator=estimator, verbose=verbose, min_samples_train=min_samples_train
+            estimator=estimator,
+            verbose=verbose,
+            min_samples_train=min_samples_train,
         )
 
     def __call__(
@@ -134,12 +136,8 @@ class TimeSeriesImputer:
         # Process rows_to_impute
         if rows_to_impute is None:
             if before is not None or after is not None:
-                before_timestamp = (
-                    pd.to_datetime(str(before)) if before is not None else None
-                )
-                after_timestamp = (
-                    pd.to_datetime(str(after)) if after is not None else None
-                )
+                before_timestamp = pd.to_datetime(str(before)) if before is not None else None
+                after_timestamp = pd.to_datetime(str(after)) if after is not None else None
 
                 mask = pd.Series(True, index=df.index)
                 if before_timestamp:
