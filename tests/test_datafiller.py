@@ -32,7 +32,7 @@ def test_datafiller():
     data_missing_random = generate_missing_at_random(data.copy(), 0.1)
     data_missing_consecutive = generate_consecutive_missing(data.copy(), 10, 3)
 
-    data_filler = DataFiller()
+    data_filler = DataFiller(min_samples_train=10)
     data_imputed_random = data_filler(data_missing_random)
     data_imputed_consecutive = data_filler(data_missing_consecutive)
 

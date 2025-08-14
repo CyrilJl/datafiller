@@ -220,7 +220,10 @@ def optimask(iy, ix, rows, cols, global_matrix_size):
         raise ValueError(f"Pareto optimization did not converge after {step} steps.")
 
     # Find the largest rectangle in the pareto-optimal ordering
-    i0, j0, _ = _get_largest_rectangle(hx, m, n)
+    i0, j0, area = _get_largest_rectangle(hx, m, n)
+
+    if area == 0:
+        return np.array([], dtype=np.uint32), np.array([], dtype=np.uint32)
 
     # Determine which columns and rows to keep for imputation
     cols_to_keep = np.setdiff1d(cols, cols_with_nan[p_cols][:i0])

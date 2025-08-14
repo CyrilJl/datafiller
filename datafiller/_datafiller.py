@@ -1,8 +1,9 @@
 """Core implementation of the DataFiller imputer."""
-from typing import Iterable
+from typing import Iterable, Tuple, Any
 
 import numpy as np
 from numba import njit, prange
+from sklearn.base import RegressorMixin
 from sklearn.linear_model import LinearRegression
 from tqdm.auto import tqdm
 
@@ -10,7 +11,7 @@ from ._optimask import optimask
 
 
 @njit(boundscheck=True, cache=True)
-def _flatnonzero(x):
+def _flatnonzero(x: np.ndarray) -> np.ndarray:
     """Numba-jitted equivalent of np.flatnonzero."""
     n = len(x)
     ret = np.empty(n, dtype=np.uint32)
@@ -23,7 +24,7 @@ def _flatnonzero(x):
 
 
 @njit(boundscheck=True, cache=True)
-def nan_positions(x):
+def nan_positions(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Finds the positions of NaNs in a 2D array.
 
@@ -35,13 +36,10 @@ def nan_positions(x):
             - mask_nan (np.ndarray): A boolean mask of the same shape as x, True where NaNs are.
             - iy (np.ndarray): The row indices of NaNs.
             - ix (np.ndarray): The column indices of NaNs.
-            - rows_with_nan (np.ndarray): Indices of rows that contain at least one NaN.
-            - cols_with_nan (np.ndarray): Indices of columns that contain at least one NaN.
     """
     m, n = x.shape
     mask_nan = np.zeros((m, n), dtype=np.bool_)
     iy, ix = np.empty(m * n, dtype=np.uint32), np.empty(m * n, dtype=np.uint32)
-    rows_with_nan, cols_with_nan = np.zeros(m, dtype=np.bool_), np.zeros(n, dtype=np.bool_)
     cnt = 0
     for i in range(m):
         for j in range(n):
@@ -49,21 +47,17 @@ def nan_positions(x):
                 mask_nan[i, j] = True
                 iy[cnt] = i
                 ix[cnt] = j
-                rows_with_nan[i] = True
-                cols_with_nan[j] = True
                 cnt += 1
 
     return (
         mask_nan,
         iy[:cnt],
         ix[:cnt],
-        _flatnonzero(rows_with_nan),
-        _flatnonzero(cols_with_nan),
     )
 
 
 @njit(boundscheck=True, cache=True)
-def nan_positions_subset(iy, ix, mask_subset_rows, mask_subset_cols):
+def nan_positions_subset(iy: np.ndarray, ix: np.ndarray, mask_subset_rows: np.ndarray, mask_subset_cols: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """
     Finds NaN positions within a subset of rows and columns.
 
@@ -74,20 +68,15 @@ def nan_positions_subset(iy, ix, mask_subset_rows, mask_subset_cols):
         mask_subset_cols (np.ndarray): A boolean mask for columns to consider.
 
     Returns:
-        tuple: A tuple containing NaN positions and affected rows/columns within the subset.
+        tuple: A tuple containing NaN positions within the subset.
     """
     n_nan = len(ix)
-    m = len(mask_subset_rows)
-    n = len(mask_subset_cols)
-    rows_with_nan, cols_with_nan = np.zeros(m, dtype=np.bool_), np.zeros(n, dtype=np.bool_)
     size = min(n_nan, mask_subset_rows.sum() * mask_subset_cols.sum())
     sub_iy, sub_ix = np.empty(size, np.uint32), np.empty(size, np.uint32)
     cnt = 0
     for k in range(n_nan):
         row, col = iy[k], ix[k]
         if mask_subset_cols[col] and mask_subset_rows[row]:
-            rows_with_nan[row] = True
-            cols_with_nan[col] = True
             sub_iy[cnt] = row
             sub_ix[cnt] = col
             cnt += 1
@@ -95,13 +84,11 @@ def nan_positions_subset(iy, ix, mask_subset_rows, mask_subset_cols):
     return (
         sub_iy[:cnt],
         sub_ix[:cnt],
-        _flatnonzero(rows_with_nan),
-        _flatnonzero(cols_with_nan),
     )
 
 
 @njit(parallel=True, boundscheck=True, cache=True)
-def _subset(X, rows, columns):
+def _subset(X: np.ndarray, rows: np.ndarray, columns: np.ndarray) -> np.ndarray:
     """
     Extracts a subset of a matrix based on row and column indices.
 
@@ -121,7 +108,7 @@ def _subset(X, rows, columns):
 
 
 @njit(boundscheck=True, cache=True)
-def _imputable_rows(mask_nan, col, mask_rows_to_impute):
+def _imputable_rows(mask_nan: np.ndarray, col: int, mask_rows_to_impute: np.ndarray) -> np.ndarray:
     """
     Finds rows that have a NaN in a specific column and are marked for imputation.
 
@@ -144,7 +131,7 @@ def _imputable_rows(mask_nan, col, mask_rows_to_impute):
 
 
 @njit(boundscheck=True, cache=True)
-def _trainable_rows(mask_nan, col):
+def _trainable_rows(mask_nan: np.ndarray, col: int) -> np.ndarray:
     """
     Finds rows that do not have a NaN in a specific column.
 
@@ -167,7 +154,7 @@ def _trainable_rows(mask_nan, col):
     return ret[:cnt]
 
 
-def _process_to_impute(size, to_impute):
+def _process_to_impute(size: int, to_impute: None | int | Iterable[int]) -> np.ndarray:
     """
     Processes the `to_impute` argument into a numpy array of indices.
 
@@ -187,7 +174,7 @@ def _process_to_impute(size, to_impute):
 
 
 @njit(boundscheck=True, parallel=True)
-def _mask_index_to_impute(size, to_impute):
+def _mask_index_to_impute(size: int, to_impute: np.ndarray) -> np.ndarray:
     """
     Converts a list of indices to a boolean mask.
 
@@ -206,7 +193,7 @@ def _mask_index_to_impute(size, to_impute):
     return ret
 
 
-def unique2d(x):
+def unique2d(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """
     equivalent to `np.unique(x, return_inverse=True, axis=0)`
     """
@@ -215,7 +202,7 @@ def unique2d(x):
     return x[idx], inv.ravel()
 
 
-def preimpute(x):
+def preimpute(x: np.ndarray) -> np.ndarray:
     """
     Performs a simple pre-imputation by filling NaNs with column means.
 
@@ -237,7 +224,7 @@ def preimpute(x):
     return xp
 
 
-def scoring(x, cols_to_impute):
+def scoring(x: np.ndarray, cols_to_impute: np.ndarray) -> np.ndarray:
     """
     Calculates a score for each feature pair to guide feature selection.
 
@@ -273,7 +260,7 @@ def scoring(x, cols_to_impute):
 
 
 @njit(boundscheck=True, parallel=True)
-def _index_to_mask(x, n):
+def _index_to_mask(x: np.ndarray, n: int) -> np.ndarray:
     """
     Converts an array of indices to a boolean mask.
 
@@ -297,7 +284,7 @@ class DataFiller:
     This class uses a model-based approach to fill in missing values, where
     each feature with missing values is predicted using other features in the dataset.
     """
-    def __init__(self, estimator=LinearRegression(), verbose=0):
+    def __init__(self, estimator: RegressorMixin = LinearRegression(), verbose: int = 0, min_samples_train: int = 50):
         """
         Initializes the DataFiller.
 
@@ -305,11 +292,13 @@ class DataFiller:
             estimator (object, optional): A scikit-learn compatible estimator.
                 Defaults to LinearRegression().
             verbose (int, optional): The verbosity level. Defaults to 0.
+            min_samples_train (int, optional): The minimum number of samples required to train a model.
         """
         self.estimator = estimator
         self.verbose = int(verbose)
+        self.min_samples_train = min_samples_train
 
-    def _validate_input(self, x, rows_to_impute, cols_to_impute, n_nearest_features):
+    def _validate_input(self, x: np.ndarray, rows_to_impute: None | int | Iterable[int], cols_to_impute: None | int | Iterable[int], n_nearest_features: None | float | int) -> int:
         """
         Validates the inputs to the __call__ method.
 
@@ -362,7 +351,7 @@ class DataFiller:
 
         return n_nearest_features
 
-    def _get_sampled_cols(self, n_features, n_nearest_features, scores, i):
+    def _get_sampled_cols(self, n_features: int, n_nearest_features: int | None, scores: np.ndarray | None, scores_index: int) -> np.ndarray:
         """
         Selects the feature columns to use for imputing a specific column.
 
@@ -373,14 +362,15 @@ class DataFiller:
             n_features (int): The total number of features.
             n_nearest_features (int): The number of features to select.
             scores (np.ndarray): A matrix of scores for feature selection.
-            i (int): The index of the column being imputed.
+            scores_index (int): The index of the column being imputed in the scores matrix.
 
         Returns:
             np.ndarray: An array of column indices to use for imputation.
         """
         if n_nearest_features is not None:
-            p = scores[i] / scores[i].sum()
-            if np.isnan(p).any():
+            p = scores[scores_index] / scores[scores_index].sum()
+            p[np.isnan(p)] = 0
+            if p.sum() == 0:
                 p = None
             sampled_cols = np.random.default_rng().choice(
                 a=np.arange(n_features),
@@ -391,7 +381,7 @@ class DataFiller:
             return np.sort(sampled_cols)
         return np.arange(n_features)
 
-    def _impute_col(self, x, x_imputed, col_to_impute, mask_nan, mask_rows_to_impute, iy, ix, n_nearest_features, scores):
+    def _impute_col(self, x: np.ndarray, x_imputed: np.ndarray, col_to_impute: int, mask_nan: np.ndarray, mask_rows_to_impute: np.ndarray, iy: np.ndarray, ix: np.ndarray, n_nearest_features: int | None, scores: np.ndarray | None, scores_index: int) -> None:
         """
         Imputes all missing values in a single column.
 
@@ -408,17 +398,17 @@ class DataFiller:
             ix (np.ndarray): Column indices of all NaNs.
             n_nearest_features (int): The number of features to use.
             scores (np.ndarray): The feature selection scores.
+            scores_index (int): The index of the column being imputed in the scores matrix.
         """
         m, n = x.shape
-        i = col_to_impute
 
-        sampled_cols = self._get_sampled_cols(n, n_nearest_features, scores, i)
+        sampled_cols = self._get_sampled_cols(n, n_nearest_features, scores, scores_index)
 
-        imputable_rows = _imputable_rows(mask_nan=mask_nan, col=i, mask_rows_to_impute=mask_rows_to_impute)
+        imputable_rows = _imputable_rows(mask_nan=mask_nan, col=col_to_impute, mask_rows_to_impute=mask_rows_to_impute)
         if not len(imputable_rows):
             return
 
-        trainable_rows = _trainable_rows(mask_nan=mask_nan, col=i)
+        trainable_rows = _trainable_rows(mask_nan=mask_nan, col=col_to_impute)
         if not len(trainable_rows):
             return # Cannot impute if no training data is available for this column
 
@@ -426,7 +416,7 @@ class DataFiller:
         mask_valid = ~mask_nan
         patterns, indexes = unique2d(mask_valid[imputable_rows][:, sampled_cols])
 
-        pre_iy_trial, pre_ix_trial, _, _ = nan_positions_subset(
+        pre_iy_trial, pre_ix_trial = nan_positions_subset(
             iy,
             ix,
             mask_trainable_rows,
@@ -438,7 +428,7 @@ class DataFiller:
             usable_cols = sampled_cols[patterns[k]].astype(np.uint32)
             mask_usable_cols = _index_to_mask(usable_cols, n)
             if len(usable_cols):
-                iy_trial, ix_trial, _, _ = nan_positions_subset(
+                iy_trial, ix_trial = nan_positions_subset(
                     pre_iy_trial,
                     pre_ix_trial,
                     mask_trainable_rows,
@@ -450,9 +440,12 @@ class DataFiller:
                 if not len(rows) or not len(cols):
                     continue # Not enough data to train a model
 
+                if len(rows) < self.min_samples_train:
+                    continue # Not enough samples to train a model
+
                 X_train = _subset(X=x, rows=rows, columns=cols)
-                self.estimator.fit(X=X_train, y=x[rows, i])
-                x_imputed[index_predict, i] = self.estimator.predict(_subset(X=x, rows=index_predict, columns=cols))
+                self.estimator.fit(X=X_train, y=x[rows, col_to_impute])
+                x_imputed[index_predict, col_to_impute] = self.estimator.predict(_subset(X=x, rows=index_predict, columns=cols))
 
 
     def __call__(
@@ -489,9 +482,9 @@ class DataFiller:
         scores = scoring(x, cols_to_impute) if n_nearest_features is not None else None
 
         x_imputed = x.copy()
-        mask_nan, iy, ix, _, _ = nan_positions(x)
+        mask_nan, iy, ix = nan_positions(x)
 
         for i, col in enumerate(tqdm(cols_to_impute, leave=False, disable=(not self.verbose))):
-            self._impute_col(x, x_imputed, col, mask_nan, mask_rows_to_impute, iy, ix, n_nearest_features, scores)
+            self._impute_col(x, x_imputed, col, mask_nan, mask_rows_to_impute, iy, ix, n_nearest_features, scores, i)
 
         return x_imputed
