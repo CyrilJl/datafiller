@@ -66,6 +66,8 @@ class TimeSeriesImputer:
         rows_to_impute: Union[None, int, Iterable[int]] = None,
         cols_to_impute: Union[None, int, str, Iterable[Union[int, str]]] = None,
         n_nearest_features: Union[None, float, int] = None,
+        before: object = None,
+        after: object = None,
     ) -> pd.DataFrame:
         """Imputes missing values in a time series DataFrame.
 
@@ -80,6 +82,12 @@ class TimeSeriesImputer:
                 imputation. If it's an int, it's the absolute number of
                 features. If it's a float, it's the fraction of features to
                 use. If None, all features are used. Defaults to None.
+            before: A timestamp-like object. If specified, only rows
+                before this timestamp are imputed. Can be anything that can be
+                parsed by ``lambda x: pd.to_datetime(str(x))``. Defaults to None.
+            after: A timestamp-like object. If specified, only rows
+                after this timestamp are imputed. Can be anything that can be
+                parsed by ``lambda x: pd.to_datetime(str(x))``. Defaults to None.
 
         Returns:
             The imputed DataFrame with the same columns as the original.
@@ -122,6 +130,23 @@ class TimeSeriesImputer:
                 else:
                     raise ValueError("cols_to_impute must be an int, str, or an iterable of ints or strs.")
             cols_to_impute_indices = np.array(indices)
+
+        # Process rows_to_impute
+        if rows_to_impute is None:
+            if before is not None or after is not None:
+                before_timestamp = (
+                    pd.to_datetime(str(before)) if before is not None else None
+                )
+                after_timestamp = (
+                    pd.to_datetime(str(after)) if after is not None else None
+                )
+
+                mask = pd.Series(True, index=df.index)
+                if before_timestamp:
+                    mask &= df.index < before_timestamp
+                if after_timestamp:
+                    mask &= df.index > after_timestamp
+                rows_to_impute = np.where(mask)[0]
 
         # Impute the data
         imputed_data = self.multivariate_imputer(

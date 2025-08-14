@@ -344,7 +344,12 @@ class MultivariateImputer:
         if rows_to_impute is not None:
             if isinstance(rows_to_impute, int):
                 rows_to_impute = [rows_to_impute]
-            if not all(isinstance(i, int) for i in rows_to_impute) or not all(0 <= i < m for i in rows_to_impute):
+            if isinstance(rows_to_impute, np.ndarray):
+                if not np.issubdtype(rows_to_impute.dtype, np.integer):
+                    raise ValueError(f"rows_to_impute must have an integer dtype, but got {rows_to_impute.dtype}.")
+                if not (np.all(rows_to_impute >= 0) and np.all(rows_to_impute < m)):
+                    raise ValueError(f"rows_to_impute must be a list of integers between 0 and {m - 1}.")
+            elif not all(isinstance(i, int) for i in rows_to_impute) or not all(0 <= i < m for i in rows_to_impute):
                 raise ValueError(f"rows_to_impute must be a list of integers between 0 and {m - 1}.")
 
         if cols_to_impute is not None:
