@@ -280,7 +280,7 @@ def _index_to_mask(x: np.ndarray, n: int) -> np.ndarray:
     return ret
 
 
-class DataFiller:
+class MultivariateImputer:
     """
     A class to impute missing values in a 2D numpy array.
 
@@ -290,7 +290,7 @@ class DataFiller:
 
     def __init__(self, estimator: RegressorMixin = LinearRegression(), verbose: int = 0, min_samples_train: int = 50):
         """
-        Initializes the DataFiller.
+        Initializes the MultivariateImputer.
 
         Args:
             estimator (object, optional): A scikit-learn compatible estimator.
@@ -344,7 +344,9 @@ class DataFiller:
         if cols_to_impute is not None:
             if isinstance(cols_to_impute, int):
                 cols_to_impute = [cols_to_impute]
-            if not all(isinstance(i, int) for i in cols_to_impute) or not all(0 <= i < n for i in cols_to_impute):
+            if not all(isinstance(i, (int, np.integer)) for i in cols_to_impute) or not all(
+                0 <= i < n for i in cols_to_impute
+            ):
                 raise ValueError(f"cols_to_impute must be a list of integers between 0 and {n - 1}.")
 
         if n_nearest_features is not None:
