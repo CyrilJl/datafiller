@@ -65,7 +65,6 @@ def numba_apply_permutation(p, x):
     return result
 
 
-@staticmethod
 @njit((uint32[:], uint32[:]), parallel=True, boundscheck=True, cache=True)
 def numba_apply_permutation_inplace(p, x):
     n = p.size
@@ -115,67 +114,47 @@ def _process_index(index, num):
     return ret, table_inv[:cnt], cnt
 
 
-@staticmethod
 def _get_largest_rectangle(heights, m, n):
     if n > len(heights):
-        heights = np.concat([heights, [0]])
+        heights = np.concatenate((heights, np.array([0])))
     areas = (m - heights) * (n - np.arange(len(heights)))
     i0 = np.argmax(areas)
     return i0, heights[i0], areas[i0]
 
 
-@njit(uint32[:](uint32, uint32[:], uint32[:], uint32), parallel=True, boundscheck=True, cache=True)
-def compute_to_keep(size, index_with_nan, permutation, split):
-    """
-    Computes the indices to keep after removing a subset of indices with NaNs.
-
-    Args:
-        size (int): The total number of indices.
-        index_with_nan (np.ndarray): The indices that contain NaNs.
-        permutation (np.ndarray): The permutation array.
-        split (int): The split point in the permutation array.
-
-    Returns:
-        np.ndarray: The indices to keep after removing the subset with NaNs.
-    """
-    mask = np.zeros(size, dtype=np.bool_)
-    for i in prange(split):
-        mask[index_with_nan[permutation[i]]] = True
-
-    count = size - split
-
-    result = np.empty(count, dtype=np.uint32)
-    idx = 0
-    for i in range(size):
-        if not mask[i]:
-            result[idx] = i
-            idx += 1
-    return result
-
-
 def optimask(iy, ix, rows, cols, global_matrix_size):
+    """
+    Finds the largest rectangular area of a matrix that can be used for training.
+    This is done by finding a pareto-optimal ordering of rows and columns.
+    """
     m, n = global_matrix_size
+
+    # Process row and column indices of NaNs
     iyp, rows_with_nan, m_nan = _process_index(index=iy, num=m)
     ixp, cols_with_nan, n_nan = _process_index(index=ix, num=n)
+
+    # For each row with NaNs, find the maximum index of a column with a NaN
     hy = groupby_max(iyp, ixp, m_nan)
+    # For each col with NaNs, find the maximum index of a row with a NaN
     hx = groupby_max(ixp, iyp, n_nan)
 
     p_rows = np.arange(m_nan, dtype=np.uint32)
     p_cols = np.arange(n_nan, dtype=np.uint32)
     is_pareto_ordered = False
 
+    # Iteratively sort rows and columns to find a pareto-optimal ordering
     step = 0
     while not is_pareto_ordered and step < 16:
         kind = "stable" if step else "quicksort"
         axis = step % 2
         step += 1
-        if axis == 0:
+        if axis == 0: # Sort by rows
             p_step = (-hy).argsort(kind=kind).astype(np.uint32)
             apply_permutation(p_step, iyp, inplace=True)
             p_rows, hy = apply_p_step(p_step, p_rows, hy)
             hx = groupby_max(ixp, iyp, n_nan)
             is_pareto_ordered = is_decreasing(hx)
-        else:
+        else: # Sort by columns
             p_step = (-hx).argsort(kind=kind).astype(np.uint32)
             apply_permutation(p_step, ixp, inplace=True)
             hy = groupby_max(iyp, ixp, m_nan)
@@ -183,8 +162,12 @@ def optimask(iy, ix, rows, cols, global_matrix_size):
             is_pareto_ordered = is_decreasing(hy)
 
     if not is_pareto_ordered:
-        raise ValueError(f"{step}")
-    i0, j0, area = _get_largest_rectangle(hx, m, n)
+        raise ValueError(f"Pareto optimization did not converge after {step} steps.")
+
+    # Find the largest rectangle in the pareto-optimal ordering
+    i0, j0, _ = _get_largest_rectangle(hx, m, n)
+
+    # Determine which columns and rows to keep for imputation
     cols_to_keep = np.setdiff1d(cols, cols_with_nan[p_cols][:i0])
     rows_to_keep = np.setdiff1d(rows, rows_with_nan[p_rows][:j0])
 

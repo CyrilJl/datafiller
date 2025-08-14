@@ -136,6 +136,8 @@ def unique2d(x):
 def preimpute(x):
     xp = x.copy()
     col_means = np.nanmean(x, axis=0)
+    if np.isnan(col_means).any():
+        raise ValueError("One or more columns are all NaNs, which is not supported.")
     nan_mask = np.isnan(x)
     xp[nan_mask] = np.take(col_means, np.where(nan_mask)[1])
     return xp
@@ -177,6 +179,107 @@ class DataFiller:
         self.estimator = estimator
         self.verbose = int(verbose)
 
+    def _validate_input(self, x, rows_to_impute, cols_to_impute, n_nearest_features):
+        if not isinstance(x, np.ndarray):
+            raise ValueError("x must be a numpy array.")
+        if x.ndim != 2:
+            raise ValueError(f"x must be a 2D array, but got {x.ndim} dimensions.")
+        if not np.issubdtype(x.dtype, np.number):
+            raise ValueError(f"x must have a numeric dtype, but got {x.dtype}.")
+        if np.isinf(x).any():
+            raise ValueError("x cannot contain infinity.")
+
+        m, n = x.shape
+
+        if rows_to_impute is not None:
+            if isinstance(rows_to_impute, int):
+                rows_to_impute = [rows_to_impute]
+            if not all(isinstance(i, int) for i in rows_to_impute) or not all(0 <= i < m for i in rows_to_impute):
+                raise ValueError(f"rows_to_impute must be a list of integers between 0 and {m-1}.")
+
+        if cols_to_impute is not None:
+            if isinstance(cols_to_impute, int):
+                cols_to_impute = [cols_to_impute]
+            if not all(isinstance(i, int) for i in cols_to_impute) or not all(0 <= i < n for i in cols_to_impute):
+                raise ValueError(f"cols_to_impute must be a list of integers between 0 and {n-1}.")
+
+        if n_nearest_features is not None:
+            if isinstance(n_nearest_features, float):
+                if not (0 < n_nearest_features <= 1.0):
+                    raise ValueError("If n_nearest_features is a float, it must be in (0, 1].")
+                n_nearest_features = int(n_nearest_features * n)
+                if n_nearest_features == 0:
+                    raise ValueError("n_nearest_features resulted in 0 features to select.")
+            if not isinstance(n_nearest_features, int):
+                raise ValueError("n_nearest_features must be an int or float.")
+            if not (0 < n_nearest_features <= n):
+                raise ValueError(f"n_nearest_features must be between 1 and {n}.")
+
+        return n_nearest_features
+
+    def _get_sampled_cols(self, n_features, n_nearest_features, scores, i):
+        """Selects the columns to use for imputation."""
+        if n_nearest_features is not None:
+            p = scores[i] / scores[i].sum()
+            if np.isnan(p).any():
+                p = None
+            sampled_cols = np.random.default_rng().choice(
+                a=np.arange(n_features),
+                size=n_nearest_features,
+                replace=False,
+                p=p,
+            )
+            return np.sort(sampled_cols)
+        return np.arange(n_features)
+
+    def _impute_col(self, x, x_imputed, col_to_impute, mask_nan, mask_rows_to_impute, iy, ix, n_nearest_features, scores):
+        """Imputes a single column."""
+        m, n = x.shape
+        i = col_to_impute
+
+        sampled_cols = self._get_sampled_cols(n, n_nearest_features, scores, i)
+
+        imputable_rows = _imputable_rows(mask_nan=mask_nan, col=i, mask_rows_to_impute=mask_rows_to_impute)
+        if not len(imputable_rows):
+            return
+
+        trainable_rows = _trainable_rows(mask_nan=mask_nan, col=i)
+        if not len(trainable_rows):
+            return # Cannot impute if no training data is available for this column
+
+        mask_trainable_rows = _index_to_mask(trainable_rows, m)
+        mask_valid = ~mask_nan
+        patterns, indexes = unique2d(mask_valid[imputable_rows][:, sampled_cols])
+
+        pre_iy_trial, pre_ix_trial, _, _ = nan_positions_subset(
+            iy,
+            ix,
+            mask_trainable_rows,
+            _index_to_mask(sampled_cols, n),
+        )
+
+        for k in range(len(patterns)):
+            index_predict = imputable_rows[indexes == k]
+            usable_cols = sampled_cols[patterns[k]].astype(np.uint32)
+            mask_usable_cols = _index_to_mask(usable_cols, n)
+            if len(usable_cols):
+                iy_trial, ix_trial, _, _ = nan_positions_subset(
+                    pre_iy_trial,
+                    pre_ix_trial,
+                    mask_trainable_rows,
+                    mask_usable_cols,
+                )
+                rows, cols = optimask(
+                    iy=iy_trial, ix=ix_trial, rows=trainable_rows, cols=usable_cols, global_matrix_size=(m, n)
+                )
+                if not len(rows) or not len(cols):
+                    continue # Not enough data to train a model
+
+                X_train = _subset(X=x, rows=rows, columns=cols)
+                self.estimator.fit(X=X_train, y=x[rows, i])
+                x_imputed[index_predict, i] = self.estimator.predict(_subset(X=x, rows=index_predict, columns=cols))
+
+
     def __call__(
         self,
         x: np.ndarray,
@@ -184,58 +287,19 @@ class DataFiller:
         cols_to_impute: None | int | Iterable[int] = None,
         n_nearest_features: None | float | int = None,
     ):
+        n_nearest_features = self._validate_input(x, rows_to_impute, cols_to_impute, n_nearest_features)
+
         m, n = x.shape
         rows_to_impute = _process_to_impute(size=m, to_impute=rows_to_impute)
         cols_to_impute = _process_to_impute(size=n, to_impute=cols_to_impute)
         mask_rows_to_impute = _mask_index_to_impute(size=m, to_impute=rows_to_impute)
 
-        if n_nearest_features is not None:
-            scores = scoring(x, cols_to_impute)
+        scores = scoring(x, cols_to_impute) if n_nearest_features is not None else None
 
         x_imputed = x.copy()
-        mask_nan, iy, ix, rows_with_nan, cols_with_nan = nan_positions(x)
-        mask_valid = ~mask_nan
+        mask_nan, iy, ix, _, _ = nan_positions(x)
 
         for i, col in enumerate(tqdm(cols_to_impute, leave=False, disable=(not self.verbose))):
-            if n_nearest_features is not None:
-                sampled_cols = np.random.default_rng().choice(
-                    a=np.arange(n),
-                    size=n_nearest_features,
-                    replace=False,
-                    p=scores[i] / scores[i].sum(),
-                )
-                sampled_cols = np.sort(sampled_cols)
-            else:
-                sampled_cols = np.arange(n)
-
-            imputable_rows = _imputable_rows(mask_nan=mask_nan, col=col, mask_rows_to_impute=mask_rows_to_impute)
-            trainable_rows = _trainable_rows(mask_nan=mask_nan, col=col)
-            mask_trainable_rows = _index_to_mask(trainable_rows, m)
-            patterns, indexes = unique2d(mask_valid[imputable_rows][:, sampled_cols])
-
-            pre_iy_trial, pre_ix_trial, _, _ = nan_positions_subset(
-                iy,
-                ix,
-                mask_trainable_rows,
-                _index_to_mask(sampled_cols, n),
-            )
-
-            for k in range(len(patterns)):
-                index_predict = imputable_rows[indexes == k]
-                usable_cols = sampled_cols[patterns[k]].astype(np.uint32)
-                mask_usable_cols = _index_to_mask(usable_cols, n)
-                if len(usable_cols):
-                    iy_trial, ix_trial, _, _ = nan_positions_subset(
-                        pre_iy_trial,
-                        pre_ix_trial,
-                        mask_trainable_rows,
-                        mask_usable_cols,
-                    )
-                    rows, cols = optimask(
-                        iy=iy_trial, ix=ix_trial, rows=trainable_rows, cols=usable_cols, global_matrix_size=(m, n)
-                    )
-                    X_train = _subset(X=x, rows=rows, columns=cols)
-                    self.estimator.fit(X=X_train, y=x[rows, i])
-                    x_imputed[index_predict, i] = self.estimator.predict(_subset(X=x, rows=index_predict, columns=cols))
+            self._impute_col(x, x_imputed, col, mask_nan, mask_rows_to_impute, iy, ix, n_nearest_features, scores)
 
         return x_imputed
