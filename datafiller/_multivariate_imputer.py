@@ -12,19 +12,6 @@ from ._optimask import optimask
 
 
 @njit(boundscheck=True, cache=True)
-def _flatnonzero(x: np.ndarray) -> np.ndarray:
-    """Numba-jitted equivalent of np.flatnonzero."""
-    n = len(x)
-    ret = np.empty(n, dtype=np.uint32)
-    cnt = 0
-    for k in range(n):
-        if x[k]:
-            ret[cnt] = k
-            cnt += 1
-    return ret[:cnt]
-
-
-@njit(boundscheck=True, cache=True)
 def nan_positions(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Finds the positions of NaNs in a 2D array.
 
@@ -304,7 +291,12 @@ class MultivariateImputer:
         print(X_imputed)
     """
 
-    def __init__(self, estimator: RegressorMixin = LinearRegression(), verbose: int = 0, min_samples_train: int = 50):
+    def __init__(
+        self,
+        estimator: RegressorMixin = LinearRegression(),
+        verbose: int = 0,
+        min_samples_train: int = 50,
+    ):
         self.estimator = estimator
         self.verbose = int(verbose)
         self.min_samples_train = min_samples_train
@@ -344,7 +336,12 @@ class MultivariateImputer:
         if rows_to_impute is not None:
             if isinstance(rows_to_impute, int):
                 rows_to_impute = [rows_to_impute]
-            if not all(isinstance(i, int) for i in rows_to_impute) or not all(0 <= i < m for i in rows_to_impute):
+            if isinstance(rows_to_impute, np.ndarray):
+                if not np.issubdtype(rows_to_impute.dtype, np.integer):
+                    raise ValueError(f"rows_to_impute must have an integer dtype, but got {rows_to_impute.dtype}.")
+                if not (np.all(rows_to_impute >= 0) and np.all(rows_to_impute < m)):
+                    raise ValueError(f"rows_to_impute must be a list of integers between 0 and {m - 1}.")
+            elif not all(isinstance(i, int) for i in rows_to_impute) or not all(0 <= i < m for i in rows_to_impute):
                 raise ValueError(f"rows_to_impute must be a list of integers between 0 and {m - 1}.")
 
         if cols_to_impute is not None:
@@ -370,7 +367,11 @@ class MultivariateImputer:
         return n_nearest_features
 
     def _get_sampled_cols(
-        self, n_features: int, n_nearest_features: int | None, scores: np.ndarray | None, scores_index: int
+        self,
+        n_features: int,
+        n_nearest_features: int | None,
+        scores: np.ndarray | None,
+        scores_index: int,
     ) -> np.ndarray:
         """Selects the feature columns to use for imputing a specific column.
 
@@ -469,11 +470,8 @@ class MultivariateImputer:
                 rows, cols = optimask(
                     iy=iy_trial, ix=ix_trial, rows=trainable_rows, cols=usable_cols, global_matrix_size=(m, n)
                 )
-                if not len(rows) or not len(cols):
+                if (len(rows) < self.min_samples_train) or (not len(cols)):
                     continue  # Not enough data to train a model
-
-                if len(rows) < self.min_samples_train:
-                    continue  # Not enough samples to train a model
 
                 X_train = _subset(X=x, rows=rows, columns=cols)
                 self.estimator.fit(X=X_train, y=x[rows, col_to_impute])

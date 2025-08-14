@@ -60,3 +60,57 @@ def test_timeseries_imputer_invalid_input():
 
     with pytest.raises(ValueError):
         TimeSeriesImputer(lags=[1, 0])
+
+
+def test_timeseries_imputer_before():
+    df = generate_ts_data(100, 2)
+    df.iloc[10:20, 0] = np.nan
+    df.iloc[80:90, 1] = np.nan
+
+    ts_imputer = TimeSeriesImputer(lags=[1, 2])
+    imputed_df = ts_imputer(df, before="2020-02-19")  # 50th day
+
+    assert not imputed_df.iloc[:50]["feature_0"].isnull().sum()
+    assert imputed_df.iloc[50:]["feature_0"].isnull().sum() == 0
+    assert not imputed_df.iloc[:50]["feature_1"].isnull().sum()
+    assert imputed_df.iloc[50:]["feature_1"].isnull().sum() > 0
+
+
+def test_timeseries_imputer_after():
+    df = generate_ts_data(100, 2)
+    df.iloc[10:20, 0] = np.nan
+    df.iloc[80:90, 1] = np.nan
+
+    ts_imputer = TimeSeriesImputer(lags=[1, 2])
+    imputed_df = ts_imputer(df, after="2020-02-19")  # 50th day
+
+    assert imputed_df.iloc[:50]["feature_0"].isnull().sum() > 0
+    assert not imputed_df.iloc[50:]["feature_0"].isnull().sum()
+    assert imputed_df.iloc[:50]["feature_1"].isnull().sum() == 0
+    assert not imputed_df.iloc[50:]["feature_1"].isnull().sum()
+
+
+def test_timeseries_imputer_before_and_after():
+    df = generate_ts_data(100, 2)
+    df.iloc[10:20, 0] = np.nan
+    df.iloc[40:50, 0] = np.nan
+    df.iloc[80:90, 1] = np.nan
+
+    ts_imputer = TimeSeriesImputer(lags=[1, 2])
+    imputed_df = ts_imputer(df, after="2020-01-30", before="2020-02-29")  # 30th and 60th day
+
+    assert imputed_df.iloc[:30]["feature_0"].isnull().sum() > 0
+    assert not imputed_df.iloc[30:60]["feature_0"].isnull().sum()
+    assert imputed_df.iloc[60:]["feature_1"].isnull().sum() > 0
+
+
+def test_timeseries_imputer_rows_to_impute_priority():
+    df = generate_ts_data(100, 2)
+    df.iloc[10:20, 0] = np.nan
+    df.iloc[80:90, 1] = np.nan
+
+    ts_imputer = TimeSeriesImputer(lags=[1, 2])
+    imputed_df = ts_imputer(df, rows_to_impute=range(10, 20), before="2020-01-50")
+
+    assert not imputed_df.iloc[10:20]["feature_0"].isnull().sum()
+    assert imputed_df.iloc[80:90]["feature_1"].isnull().sum() > 0

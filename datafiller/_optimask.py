@@ -160,7 +160,11 @@ def _get_largest_rectangle(heights: np.ndarray, m: int, n: int) -> tuple[int, in
 
 
 def optimask(
-    iy: np.ndarray, ix: np.ndarray, rows: np.ndarray, cols: np.ndarray, global_matrix_size: tuple[int, int]
+    iy: np.ndarray,
+    ix: np.ndarray,
+    rows: np.ndarray,
+    cols: np.ndarray,
+    global_matrix_size: tuple[int, int],
 ) -> tuple[np.ndarray, np.ndarray]:
     """Finds the largest rectangular area of a matrix for training.
 
