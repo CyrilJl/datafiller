@@ -19,7 +19,9 @@ dependencies = [
 [project.optional-dependencies]
 test = [
     "pytest",
-    "pandas"
+    "pandas",
+    "pytest-cov",
+    "codecov",
 ]
 
 [tool.ruff]
