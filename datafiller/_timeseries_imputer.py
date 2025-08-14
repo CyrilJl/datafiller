@@ -6,6 +6,7 @@ from sklearn.linear_model import LinearRegression
 
 from ._multivariate_imputer import MultivariateImputer
 
+
 class TimeSeriesImputer:
     """
     A time series imputer that uses autoregressive features to fill missing values.
@@ -113,7 +114,7 @@ class TimeSeriesImputer:
             df_with_lags.values,
             rows_to_impute=rows_to_impute,
             cols_to_impute=cols_to_impute_indices,
-            n_nearest_features=n_nearest_features
+            n_nearest_features=n_nearest_features,
         )
 
         # Return a DataFrame with the same columns as the original
