@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "datafiller"
+version = "0.1.0"
+description = "Data imputation"
+authors = [
+  { name="Jules", email="jules@example.com" },
+]
+dependencies = [
+    "numpy",
+    "numba",
+    "scikit-learn",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "coverage",
+]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
+
+[tool.coverage.run]
+source = ["datafiller"]
