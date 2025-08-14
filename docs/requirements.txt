@@ -1,0 +1,4 @@
+sphinx
+sphinxawesome-theme
+pandas
+myst-parser
