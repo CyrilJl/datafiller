@@ -1,3 +1,8 @@
+"""
+This module provides the `optimask` function, a low-level utility for finding an
+optimal rectangular subset of a matrix that contains the fewest missing values.
+This is used to select the best rows and columns for training an imputation model.
+"""
 import numpy as np
 from numba import bool_, njit, prange, uint32
 from numba.types import UniTuple
@@ -34,6 +39,7 @@ def groupby_max(a, b, n):
 
 @njit(UniTuple(uint32[:], 2)(uint32[:], uint32[:], uint32[:]), parallel=True, boundscheck=True, cache=True)
 def apply_p_step(p_step, a, b):
+    """Applies a permutation to two arrays."""
     ret_a = np.empty(a.size, dtype=np.uint32)
     ret_b = np.empty(b.size, dtype=np.uint32)
     for k in prange(a.size):
@@ -67,6 +73,13 @@ def numba_apply_permutation(p, x):
 
 @njit((uint32[:], uint32[:]), parallel=True, boundscheck=True, cache=True)
 def numba_apply_permutation_inplace(p, x):
+    """
+    Numba-jitted function to apply a permutation to an array in-place.
+
+    Args:
+        p (np.ndarray): The permutation array.
+        x (np.ndarray): The array to be permuted.
+    """
     n = p.size
     rank = np.empty(n, dtype=np.uint32)
 
@@ -97,6 +110,22 @@ def apply_permutation(p, x, inplace: bool):
 
 @njit(boundscheck=True, fastmath=True, nogil=True)
 def _process_index(index, num):
+    """
+    Compresses an array of indices into a dense, zero-based array.
+
+    This is useful for creating a mapping from original indices to a smaller,
+    contiguous set of indices, for example, when dealing with a subset of rows or columns.
+
+    Args:
+        index (np.ndarray): The array of indices to process.
+        num (int): The maximum value in the index array (e.g., total number of rows).
+
+    Returns:
+        tuple: A tuple containing:
+            - ret (np.ndarray): The compressed index array.
+            - table_inv (np.ndarray): The inverse mapping to get original indices back.
+            - cnt (int): The number of unique indices.
+    """
     size = len(index)
     table = np.zeros(num, dtype=np.uint32)
     table_inv = np.empty(num, dtype=np.uint32)
@@ -115,6 +144,19 @@ def _process_index(index, num):
 
 
 def _get_largest_rectangle(heights, m, n):
+    """
+    Finds the largest rectangle under a histogram.
+
+    This is used to find the largest area of non-missing values.
+
+    Args:
+        heights (np.ndarray): The histogram of heights.
+        m (int): The total number of rows.
+        n (int): The total number of columns.
+
+    Returns:
+        tuple: A tuple containing the top-left corner and the area of the largest rectangle.
+    """
     if n > len(heights):
         heights = np.concatenate((heights, np.array([0])))
     areas = (m - heights) * (n - np.arange(len(heights)))
@@ -125,7 +167,20 @@ def _get_largest_rectangle(heights, m, n):
 def optimask(iy, ix, rows, cols, global_matrix_size):
     """
     Finds the largest rectangular area of a matrix that can be used for training.
-    This is done by finding a pareto-optimal ordering of rows and columns.
+
+    This is the main function of this module. It uses a pareto-optimal sorting
+    strategy to find the largest rectangle of non-NaN values, which can then be
+    used to train a model for imputation.
+
+    Args:
+        iy (np.ndarray): Row indices of NaNs.
+        ix (np.ndarray): Column indices of NaNs.
+        rows (np.ndarray): The rows to consider for the mask.
+        cols (np.ndarray): The columns to consider for the mask.
+        global_matrix_size (tuple): The shape of the original matrix (m, n).
+
+    Returns:
+        tuple: A tuple containing the rows and columns to keep for training.
     """
     m, n = global_matrix_size
 
