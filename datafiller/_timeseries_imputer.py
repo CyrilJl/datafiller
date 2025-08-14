@@ -1,33 +1,47 @@
-import pandas as pd
 import numpy as np
-from typing import Iterable, Union
+import pandas as pd
 from sklearn.base import RegressorMixin
 from sklearn.linear_model import LinearRegression
+from typing import Iterable, Union
 
 from ._multivariate_imputer import MultivariateImputer
 
 
 class TimeSeriesImputer:
-    """
-    A time series imputer that uses autoregressive features to fill missing values.
+    """Imputes missing values in time series data.
 
-    This class wraps the `MultivariateImputer` and is designed to work with
-    pandas DataFrames that have a `DatetimeIndex` with a defined frequency.
-    It creates lagged and lead features and uses them to impute missing values
-    in the original columns.
+    This class wraps the :class:`MultivariateImputer` to specifically handle
+    time series data in pandas DataFrames. It automatically creates lagged and
+    lead features based on the time series index, then uses these new
+    features to impute missing values.
 
-    Parameters
-    ----------
-    lags : Iterable[int], default=(1,)
-        An iterable of integers specifying the lags and leads to create as
-        autoregressive features. Positive integers create lags (e.g., `t-1`),
-        and negative integers create leads (e.g., `t+1`).
-    estimator : RegressorMixin, default=LinearRegression()
-        A scikit-learn compatible estimator to use for imputation.
-    verbose : int, default=0
-        The verbosity level.
-    min_samples_train : int, default=50
-        The minimum number of samples required to train a model.
+    Args:
+        lags (Iterable[int], optional): An iterable of integers specifying
+            the lags and leads to create as autoregressive features. Positive
+            integers create lags (e.g., `t-1`), and negative integers create
+            leads (e.g., `t+1`). Defaults to `(1,)`.
+        estimator (RegressorMixin, optional): A scikit-learn compatible
+            estimator to use for imputation. Defaults to `LinearRegression()`.
+        verbose (int, optional): The verbosity level. Defaults to 0.
+        min_samples_train (int, optional): The minimum number of samples
+            required to train a model. Defaults to 50.
+
+    .. code-block:: python
+
+        import pandas as pd
+        import numpy as np
+        from datafiller import TimeSeriesImputer
+
+        # Create a time series DataFrame with missing values
+        rng = pd.date_range('2020-01-01', periods=10, freq='D')
+        data = {'value': [1, 2, np.nan, 4, 5, 6, np.nan, 8, 9, 10]}
+        df = pd.DataFrame(data, index=rng)
+
+        # Create a time series imputer and fill missing values
+        ts_imputer = TimeSeriesImputer(lags=[1, -1])
+        df_imputed = ts_imputer(df)
+
+        print(df_imputed)
     """
 
     def __init__(
@@ -52,28 +66,28 @@ class TimeSeriesImputer:
         rows_to_impute: Union[None, int, Iterable[int]] = None,
         cols_to_impute: Union[None, int, str, Iterable[Union[int, str]]] = None,
         n_nearest_features: Union[None, float, int] = None,
-    ):
-        """
-        Imputes missing values in a time series DataFrame.
+    ) -> pd.DataFrame:
+        """Imputes missing values in a time series DataFrame.
 
-        Parameters
-        ----------
-        df : pd.DataFrame
-            The input DataFrame with a `DatetimeIndex` and missing values (NaNs).
-        rows_to_impute : None | int | Iterable[int], default=None
-            The indices of rows to impute. If None, all rows are considered.
-        cols_to_impute : None | int | str | Iterable[Union[int, str]], default=None
-            The indices or names of columns to impute. If None, all columns
-            are considered.
-        n_nearest_features : None | float | int, default=None
-            The number of features to use for imputation. If it's an int, it's
-            the absolute number of features. If it's a float, it's the
-            fraction of features to use. If None, all features are used.
+        Args:
+            df: The input DataFrame with a `DatetimeIndex` and missing
+                values (NaNs). The index must have a defined frequency.
+            rows_to_impute: The indices of rows to impute.
+                If None, all rows are considered. Defaults to None.
+            cols_to_impute: The indices or names of columns
+                to impute. If None, all columns are considered. Defaults to None.
+            n_nearest_features: The number of features to use for
+                imputation. If it's an int, it's the absolute number of
+                features. If it's a float, it's the fraction of features to
+                use. If None, all features are used. Defaults to None.
 
-        Returns
-        -------
-        pd.DataFrame
+        Returns:
             The imputed DataFrame with the same columns as the original.
+
+        Raises:
+            TypeError: If the input is not a pandas DataFrame or if the index
+                is not a DatetimeIndex.
+            ValueError: If the DataFrame's index does not have a frequency.
         """
         if not isinstance(df, pd.DataFrame):
             raise TypeError("Input must be a pandas DataFrame.")

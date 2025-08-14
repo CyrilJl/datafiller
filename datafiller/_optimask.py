@@ -1,7 +1,9 @@
-"""
-This module provides the `optimask` function, a low-level utility for finding an
-optimal rectangular subset of a matrix that contains the fewest missing values.
-This is used to select the best rows and columns for training an imputation model.
+"""Finds optimal rectangular subsets of a matrix.
+
+This module provides the `optimask` function, a low-level utility for finding
+an optimal rectangular subset of a matrix that contains the fewest missing
+values. This is used to select the best rows and columns for training an
+imputation model.
 """
 
 import numpy as np
@@ -10,11 +12,8 @@ from numba.types import UniTuple
 
 
 @njit(bool_(uint32[:]), boundscheck=True, cache=True)
-def is_decreasing(h):
-    """
-    numba equivalent to:
-        return (np.diff(h)>0).all()
-    """
+def is_decreasing(h: np.ndarray) -> bool:
+    """Numba-jitted check if a 1D array is decreasing."""
     for i in range(len(h) - 1):
         if h[i] < h[i + 1]:
             return False
@@ -22,14 +21,8 @@ def is_decreasing(h):
 
 
 @njit(uint32[:](uint32[:], uint32[:], uint32), boundscheck=True, cache=True)
-def groupby_max(a, b, n):
-    """
-    numba equivalent to:
-        size_a = len(a)
-        ret = np.zeros(n, dtype=np.uint32)
-        np.maximum.at(ret, a, b + 1)
-        return ret
-    """
+def groupby_max(a: np.ndarray, b: np.ndarray, n: int) -> np.ndarray:
+    """Numba-jitted equivalent of `np.maximum.at` for a groupby-max operation."""
     size_a = len(a)
     ret = np.zeros(n, dtype=np.uint32)
     for k in range(size_a):
@@ -73,13 +66,12 @@ def numba_apply_permutation(p, x):
 
 
 @njit((uint32[:], uint32[:]), parallel=True, boundscheck=True, cache=True)
-def numba_apply_permutation_inplace(p, x):
-    """
-    Numba-jitted function to apply a permutation to an array in-place.
+def numba_apply_permutation_inplace(p: np.ndarray, x: np.ndarray):
+    """Applies a permutation to an array in-place (Numba-jitted).
 
     Args:
-        p (np.ndarray): The permutation array.
-        x (np.ndarray): The array to be permuted.
+        p: The permutation array.
+        x: The array to be permuted.
     """
     n = p.size
     rank = np.empty(n, dtype=np.uint32)
@@ -91,17 +83,17 @@ def numba_apply_permutation_inplace(p, x):
         x[i] = rank[x[i]]
 
 
-def apply_permutation(p, x, inplace: bool):
-    """
-    Applies a permutation to an array.
+def apply_permutation(p: np.ndarray, x: np.ndarray, inplace: bool) -> np.ndarray | None:
+    """Applies a permutation to an array.
 
     Args:
-        p (np.ndarray): The permutation array.
-        x (np.ndarray): The array to be permuted.
-        inplace (bool): If True, applies the permutation in place; otherwise, returns a new permuted array.
+        p: The permutation array.
+        x: The array to be permuted.
+        inplace: If True, applies the permutation in place; otherwise,
+            returns a new permuted array.
 
     Returns:
-        np.ndarray: The permuted array if inplace is False; otherwise, None.
+        The permuted array if `inplace` is False; otherwise, None.
     """
     if inplace:
         numba_apply_permutation_inplace(p, x)
@@ -110,21 +102,23 @@ def apply_permutation(p, x, inplace: bool):
 
 
 @njit(boundscheck=True, fastmath=True, nogil=True)
-def _process_index(index, num):
-    """
-    Compresses an array of indices into a dense, zero-based array.
+def _process_index(index: np.ndarray, num: int) -> tuple[np.ndarray, np.ndarray, int]:
+    """Compresses an array of indices into a dense, zero-based array.
 
     This is useful for creating a mapping from original indices to a smaller,
-    contiguous set of indices, for example, when dealing with a subset of rows or columns.
+    contiguous set of indices, for example, when dealing with a subset of
+    rows or columns.
 
     Args:
-        index (np.ndarray): The array of indices to process.
-        num (int): The maximum value in the index array (e.g., total number of rows).
+        index: The array of indices to process.
+        num: The maximum value in the index array (e.g., total number of
+            rows).
 
     Returns:
-        tuple: A tuple containing:
+        A tuple containing:
             - ret (np.ndarray): The compressed index array.
-            - table_inv (np.ndarray): The inverse mapping to get original indices back.
+            - table_inv (np.ndarray): The inverse mapping to get original
+              indices back.
             - cnt (int): The number of unique indices.
     """
     size = len(index)
@@ -144,19 +138,19 @@ def _process_index(index, num):
     return ret, table_inv[:cnt], cnt
 
 
-def _get_largest_rectangle(heights, m, n):
-    """
-    Finds the largest rectangle under a histogram.
+def _get_largest_rectangle(heights: np.ndarray, m: int, n: int) -> tuple[int, int, int]:
+    """Finds the largest rectangle under a histogram.
 
     This is used to find the largest area of non-missing values.
 
     Args:
-        heights (np.ndarray): The histogram of heights.
-        m (int): The total number of rows.
-        n (int): The total number of columns.
+        heights: The histogram of heights.
+        m: The total number of rows.
+        n: The total number of columns.
 
     Returns:
-        tuple: A tuple containing the top-left corner and the area of the largest rectangle.
+        A tuple containing the top-left corner and the area of the
+        largest rectangle.
     """
     if n > len(heights):
         heights = np.concatenate((heights, np.array([0])))
@@ -165,23 +159,24 @@ def _get_largest_rectangle(heights, m, n):
     return i0, heights[i0], areas[i0]
 
 
-def optimask(iy, ix, rows, cols, global_matrix_size):
-    """
-    Finds the largest rectangular area of a matrix that can be used for training.
+def optimask(
+    iy: np.ndarray, ix: np.ndarray, rows: np.ndarray, cols: np.ndarray, global_matrix_size: tuple[int, int]
+) -> tuple[np.ndarray, np.ndarray]:
+    """Finds the largest rectangular area of a matrix for training.
 
-    This is the main function of this module. It uses a pareto-optimal sorting
-    strategy to find the largest rectangle of non-NaN values, which can then be
-    used to train a model for imputation.
+    This is the main function of this module. It uses a pareto-optimal
+    sorting strategy to find the largest rectangle of non-NaN values, which
+    can then be used to train a model for imputation.
 
     Args:
-        iy (np.ndarray): Row indices of NaNs.
-        ix (np.ndarray): Column indices of NaNs.
-        rows (np.ndarray): The rows to consider for the mask.
-        cols (np.ndarray): The columns to consider for the mask.
-        global_matrix_size (tuple): The shape of the original matrix (m, n).
+        iy: Row indices of NaNs.
+        ix: Column indices of NaNs.
+        rows: The rows to consider for the mask.
+        cols: The columns to consider for the mask.
+        global_matrix_size: The shape of the original matrix (m, n).
 
     Returns:
-        tuple: A tuple containing the rows and columns to keep for training.
+        A tuple containing the rows and columns to keep for training.
     """
     m, n = global_matrix_size
 

@@ -1,6 +1,6 @@
 """Core implementation of the DataFiller imputer."""
 
-from typing import Iterable, Tuple, Any
+from typing import Any, Iterable, Tuple
 
 import numpy as np
 from numba import njit, prange
@@ -26,15 +26,15 @@ def _flatnonzero(x: np.ndarray) -> np.ndarray:
 
 @njit(boundscheck=True, cache=True)
 def nan_positions(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Finds the positions of NaNs in a 2D array.
+    """Finds the positions of NaNs in a 2D array.
 
     Args:
-        x (np.ndarray): The input array.
+        x: The input array.
 
     Returns:
-        tuple: A tuple containing:
-            - mask_nan (np.ndarray): A boolean mask of the same shape as x, True where NaNs are.
+        A tuple containing:
+            - mask_nan (np.ndarray): A boolean mask of the same shape as x,
+              True where NaNs are.
             - iy (np.ndarray): The row indices of NaNs.
             - ix (np.ndarray): The column indices of NaNs.
     """
@@ -61,17 +61,16 @@ def nan_positions(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
 def nan_positions_subset(
     iy: np.ndarray, ix: np.ndarray, mask_subset_rows: np.ndarray, mask_subset_cols: np.ndarray
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Finds NaN positions within a subset of rows and columns.
+    """Finds NaN positions within a subset of rows and columns.
 
     Args:
-        iy (np.ndarray): Row indices of all NaNs in the original matrix.
-        ix (np.ndarray): Column indices of all NaNs in the original matrix.
-        mask_subset_rows (np.ndarray): A boolean mask for rows to consider.
-        mask_subset_cols (np.ndarray): A boolean mask for columns to consider.
+        iy: Row indices of all NaNs in the original matrix.
+        ix: Column indices of all NaNs in the original matrix.
+        mask_subset_rows: A boolean mask for rows to consider.
+        mask_subset_cols: A boolean mask for columns to consider.
 
     Returns:
-        tuple: A tuple containing NaN positions within the subset.
+        A tuple containing NaN positions within the subset.
     """
     n_nan = len(ix)
     size = min(n_nan, mask_subset_rows.sum() * mask_subset_cols.sum())
@@ -92,16 +91,15 @@ def nan_positions_subset(
 
 @njit(parallel=True, boundscheck=True, cache=True)
 def _subset(X: np.ndarray, rows: np.ndarray, columns: np.ndarray) -> np.ndarray:
-    """
-    Extracts a subset of a matrix based on row and column indices.
+    """Extracts a subset of a matrix based on row and column indices.
 
     Args:
-        X (np.ndarray): The matrix to extract from.
-        rows (np.ndarray): The indices of rows to extract.
-        columns (np.ndarray): The indices of columns to extract.
+        X: The matrix to extract from.
+        rows: The indices of rows to extract.
+        columns: The indices of columns to extract.
 
     Returns:
-        np.ndarray: The extracted sub-matrix.
+        The extracted sub-matrix.
     """
     Xs = np.empty((len(rows), len(columns)), dtype=X.dtype)
     for i in prange(len(rows)):
@@ -112,16 +110,15 @@ def _subset(X: np.ndarray, rows: np.ndarray, columns: np.ndarray) -> np.ndarray:
 
 @njit(boundscheck=True, cache=True)
 def _imputable_rows(mask_nan: np.ndarray, col: int, mask_rows_to_impute: np.ndarray) -> np.ndarray:
-    """
-    Finds rows that have a NaN in a specific column and are marked for imputation.
+    """Finds rows that have a NaN in a specific column and are marked for imputation.
 
     Args:
-        mask_nan (np.ndarray): The boolean mask of NaNs for the entire matrix.
-        col (int): The column index to check.
-        mask_rows_to_impute (np.ndarray): A boolean mask of rows to be imputed.
+        mask_nan: The boolean mask of NaNs for the entire matrix.
+        col: The column index to check.
+        mask_rows_to_impute: A boolean mask of rows to be imputed.
 
     Returns:
-        np.ndarray: An array of row indices that can be imputed for the given column.
+        An array of row indices that can be imputed for the given column.
     """
     m = len(mask_nan)
     ret = np.empty(m, dtype=np.uint32)
@@ -135,17 +132,16 @@ def _imputable_rows(mask_nan: np.ndarray, col: int, mask_rows_to_impute: np.ndar
 
 @njit(boundscheck=True, cache=True)
 def _trainable_rows(mask_nan: np.ndarray, col: int) -> np.ndarray:
-    """
-    Finds rows that do not have a NaN in a specific column.
+    """Finds rows that do not have a NaN in a specific column.
 
     These rows can be used for training a model to impute that column.
 
     Args:
-        mask_nan (np.ndarray): The boolean mask of NaNs for the entire matrix.
-        col (int): The column index to check.
+        mask_nan: The boolean mask of NaNs for the entire matrix.
+        col: The column index to check.
 
     Returns:
-        np.ndarray: An array of row indices that can be used for training.
+        An array of row indices that can be used for training.
     """
     m = len(mask_nan)
     ret = np.empty(m, dtype=np.uint32)
@@ -158,15 +154,14 @@ def _trainable_rows(mask_nan: np.ndarray, col: int) -> np.ndarray:
 
 
 def _process_to_impute(size: int, to_impute: None | int | Iterable[int]) -> np.ndarray:
-    """
-    Processes the `to_impute` argument into a numpy array of indices.
+    """Processes the `to_impute` argument into a numpy array of indices.
 
     Args:
-        size (int): The total number of items (e.g., rows or columns).
-        to_impute (None | int | Iterable[int]): The user-provided argument.
+        size: The total number of items (e.g., rows or columns).
+        to_impute: The user-provided argument.
 
     Returns:
-        np.ndarray: An array of indices to impute.
+        An array of indices to impute.
     """
     if to_impute is None:
         return np.arange(size)
@@ -178,15 +173,14 @@ def _process_to_impute(size: int, to_impute: None | int | Iterable[int]) -> np.n
 
 @njit(boundscheck=True, parallel=True)
 def _mask_index_to_impute(size: int, to_impute: np.ndarray) -> np.ndarray:
-    """
-    Converts a list of indices to a boolean mask.
+    """Converts a list of indices to a boolean mask.
 
     Args:
-        size (int): The size of the mask to create.
-        to_impute (np.ndarray): An array of indices.
+        size: The size of the mask to create.
+        to_impute: An array of indices.
 
     Returns:
-        np.ndarray: A boolean mask of length `size`.
+        A boolean mask of length `size`.
     """
     ret = np.zeros(size, dtype=np.bool_)
     set_to_impute = set(to_impute)
@@ -197,23 +191,20 @@ def _mask_index_to_impute(size: int, to_impute: np.ndarray) -> np.ndarray:
 
 
 def unique2d(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    equivalent to `np.unique(x, return_inverse=True, axis=0)`
-    """
+    """Numba-compatible equivalent of `np.unique(x, return_inverse=True, axis=0)`."""
     x_struct = np.ascontiguousarray(x).view(np.dtype((np.void, x.dtype.itemsize * x.shape[1])))
     _, idx, inv = np.unique(x_struct, return_index=True, return_inverse=True)
     return x[idx], inv.ravel()
 
 
 def preimpute(x: np.ndarray) -> np.ndarray:
-    """
-    Performs a simple pre-imputation by filling NaNs with column means.
+    """Performs a simple pre-imputation by filling NaNs with column means.
 
     Args:
-        x (np.ndarray): The array to pre-impute.
+        x: The array to pre-impute.
 
     Returns:
-        np.ndarray: The array with NaNs filled by column means.
+        The array with NaNs filled by column means.
 
     Raises:
         ValueError: If any column is entirely NaN.
@@ -228,17 +219,17 @@ def preimpute(x: np.ndarray) -> np.ndarray:
 
 
 def scoring(x: np.ndarray, cols_to_impute: np.ndarray) -> np.ndarray:
-    """
-    Calculates a score for each feature pair to guide feature selection.
+    """Calculates a score for each feature pair to guide feature selection.
 
-    The score is based on the correlation and the proportion of shared non-NaN values.
+    The score is based on the correlation and the proportion of shared
+    non-NaN values.
 
     Args:
-        x (np.ndarray): The input data matrix.
-        cols_to_impute (np.ndarray): The columns that are candidates for imputation.
+        x: The input data matrix.
+        cols_to_impute: The columns that are candidates for imputation.
 
     Returns:
-        np.ndarray: A score matrix.
+        A score matrix.
     """
     n = len(x)
 
@@ -264,15 +255,14 @@ def scoring(x: np.ndarray, cols_to_impute: np.ndarray) -> np.ndarray:
 
 @njit(boundscheck=True, parallel=True)
 def _index_to_mask(x: np.ndarray, n: int) -> np.ndarray:
-    """
-    Converts an array of indices to a boolean mask.
+    """Converts an array of indices to a boolean mask.
 
     Args:
-        x (np.ndarray): The indices to include in the mask.
-        n (int): The size of the mask.
+        x: The indices to include in the mask.
+        n: The size of the mask.
 
     Returns:
-        np.ndarray: A boolean mask of size `n`.
+        A boolean mask of size `n`.
     """
     ret = np.zeros(n, dtype=np.bool_)
     for k in prange(len(x)):
@@ -281,23 +271,42 @@ def _index_to_mask(x: np.ndarray, n: int) -> np.ndarray:
 
 
 class MultivariateImputer:
-    """
-    A class to impute missing values in a 2D numpy array.
+    """Imputes missing values in a 2D numpy array.
 
     This class uses a model-based approach to fill in missing values, where
-    each feature with missing values is predicted using other features in the dataset.
+    each feature with missing values is predicted using other features in the
+    dataset. It is designed to be efficient, using Numba for critical parts
+    and finding optimal data subsets for model training.
+
+    Args:
+        estimator (RegressorMixin, optional): A scikit-learn compatible
+            regressor. Defaults to `LinearRegression()`.
+        verbose (int, optional): The verbosity level. Defaults to 0.
+        min_samples_train (int, optional): The minimum number of samples
+            required to train a model. Defaults to 50.
+
+    .. code-block:: python
+
+        import numpy as np
+        from datafiller import MultivariateImputer
+
+        # Create a matrix with missing values
+        X = np.array([
+            [1, 2, 3],
+            [4, np.nan, 6],
+            [7, 8, 9]
+        ])
+
+        # Create an imputer and fill the missing values
+        imputer = MultivariateImputer()
+        X_imputed = imputer(X)
+
+        print(X_imputed)
     """
 
-    def __init__(self, estimator: RegressorMixin = LinearRegression(), verbose: int = 0, min_samples_train: int = 50):
-        """
-        Initializes the MultivariateImputer.
-
-        Args:
-            estimator (object, optional): A scikit-learn compatible estimator.
-                Defaults to LinearRegression().
-            verbose (int, optional): The verbosity level. Defaults to 0.
-            min_samples_train (int, optional): The minimum number of samples required to train a model.
-        """
+    def __init__(
+        self, estimator: RegressorMixin = LinearRegression(), verbose: int = 0, min_samples_train: int = 50
+    ):
         self.estimator = estimator
         self.verbose = int(verbose)
         self.min_samples_train = min_samples_train
@@ -309,17 +318,16 @@ class MultivariateImputer:
         cols_to_impute: None | int | Iterable[int],
         n_nearest_features: None | float | int,
     ) -> int:
-        """
-        Validates the inputs to the __call__ method.
+        """Validates the inputs to the `__call__` method.
 
         Args:
-            x (np.ndarray): The input data matrix.
-            rows_to_impute (None | int | Iterable[int]): Rows to impute.
-            cols_to_impute (None | int | Iterable[int]): Columns to impute.
-            n_nearest_features (None | float | int): Number of features to use for imputation.
+            x: The input data matrix.
+            rows_to_impute: Rows to impute.
+            cols_to_impute: Columns to impute.
+            n_nearest_features: Number of features to use for imputation.
 
         Returns:
-            int: The validated and processed number of nearest features.
+            The validated and processed number of nearest features.
 
         Raises:
             ValueError: If any of the inputs are invalid.
@@ -366,20 +374,20 @@ class MultivariateImputer:
     def _get_sampled_cols(
         self, n_features: int, n_nearest_features: int | None, scores: np.ndarray | None, scores_index: int
     ) -> np.ndarray:
-        """
-        Selects the feature columns to use for imputing a specific column.
+        """Selects the feature columns to use for imputing a specific column.
 
         If `n_nearest_features` is specified, it selects a subset of features
         based on the provided scores. Otherwise, it returns all features.
 
         Args:
-            n_features (int): The total number of features.
-            n_nearest_features (int): The number of features to select.
-            scores (np.ndarray): A matrix of scores for feature selection.
-            scores_index (int): The index of the column being imputed in the scores matrix.
+            n_features: The total number of features.
+            n_nearest_features: The number of features to select.
+            scores: A matrix of scores for feature selection.
+            scores_index: The index of the column being imputed in the
+                scores matrix.
 
         Returns:
-            np.ndarray: An array of column indices to use for imputation.
+            An array of column indices to use for imputation.
         """
         if n_nearest_features is not None:
             p = scores[scores_index] / scores[scores_index].sum()
@@ -408,23 +416,23 @@ class MultivariateImputer:
         scores: np.ndarray | None,
         scores_index: int,
     ) -> None:
-        """
-        Imputes all missing values in a single column.
+        """Imputes all missing values in a single column.
 
-        It identifies patterns of missingness, finds optimal data subsets for training,
-        fits the estimator, and predicts the missing values.
+        It identifies patterns of missingness, finds optimal data subsets for
+        training, fits the estimator, and predicts the missing values.
 
         Args:
-            x (np.ndarray): The original data matrix.
-            x_imputed (np.ndarray): The matrix where imputed values are stored.
-            col_to_impute (int): The index of the column to impute.
-            mask_nan (np.ndarray): A boolean mask of NaNs for the entire matrix.
-            mask_rows_to_impute (np.ndarray): A boolean mask of rows to be imputed.
-            iy (np.ndarray): Row indices of all NaNs.
-            ix (np.ndarray): Column indices of all NaNs.
-            n_nearest_features (int): The number of features to use.
-            scores (np.ndarray): The feature selection scores.
-            scores_index (int): The index of the column being imputed in the scores matrix.
+            x: The original data matrix.
+            x_imputed: The matrix where imputed values are stored.
+            col_to_impute: The index of the column to impute.
+            mask_nan: A boolean mask of NaNs for the entire matrix.
+            mask_rows_to_impute: A boolean mask of rows to be imputed.
+            iy: Row indices of all NaNs.
+            ix: Column indices of all NaNs.
+            n_nearest_features: The number of features to use.
+            scores: The feature selection scores.
+            scores_index: The index of the column being imputed in the
+                scores matrix.
         """
         m, n = x.shape
 
@@ -481,23 +489,22 @@ class MultivariateImputer:
         rows_to_impute: None | int | Iterable[int] = None,
         cols_to_impute: None | int | Iterable[int] = None,
         n_nearest_features: None | float | int = None,
-    ):
-        """
-        Imputes missing values in a 2D numpy array.
+    ) -> np.ndarray:
+        """Imputes missing values in a 2D numpy array.
 
         Args:
-            x (np.ndarray): The input data matrix with missing values (NaNs).
-            rows_to_impute (None | int | Iterable[int], optional): The indices of rows to impute.
+            x: The input data matrix with missing values (NaNs).
+            rows_to_impute: The indices of rows to impute.
                 If None, all rows are considered. Defaults to None.
-            cols_to_impute (None | int | Iterable[int], optional): The indices of columns to impute.
+            cols_to_impute: The indices of columns to impute.
                 If None, all columns are considered. Defaults to None.
-            n_nearest_features (None | float | int, optional): The number of features to use for imputation.
-                If it's an int, it's the absolute number of features.
-                If it's a float, it's the fraction of features to use.
-                If None, all features are used. Defaults to None.
+            n_nearest_features: The number of features to use for
+                imputation. If it's an int, it's the absolute number of
+                features. If it's a float, it's the fraction of features to
+                use. If None, all features are used. Defaults to None.
 
         Returns:
-            np.ndarray: The imputed data matrix.
+            The imputed data matrix.
         """
         n_nearest_features = self._validate_input(x, rows_to_impute, cols_to_impute, n_nearest_features)
 
