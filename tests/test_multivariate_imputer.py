@@ -1,5 +1,5 @@
 import numpy as np
-from datafiller import DataFiller
+from datafiller import MultivariateImputer
 
 
 def generate_data(n_samples, n_features, mean, cov):
@@ -27,7 +27,7 @@ def generate_consecutive_missing(data, n_missing_rows, n_missing_cols):
     return data
 
 
-def test_datafiller():
+def test_multivariate_imputer():
     n_samples = 100
     n_features = 10
     mean = np.zeros(n_features)
@@ -36,7 +36,7 @@ def test_datafiller():
     data_missing_random = generate_missing_at_random(data.copy(), 0.1)
     data_missing_consecutive = generate_consecutive_missing(data.copy(), 10, 3)
 
-    data_filler = DataFiller(min_samples_train=10)
+    data_filler = MultivariateImputer(min_samples_train=10)
     data_imputed_random = data_filler(data_missing_random)
     data_imputed_consecutive = data_filler(data_missing_consecutive)
 

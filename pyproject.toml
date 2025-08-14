@@ -16,5 +16,11 @@ dependencies = [
     "tqdm",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pandas"
+]
+
 [tool.ruff]
 line-length = 120
