@@ -68,7 +68,7 @@ def test_timeseries_imputer_before():
     df.iloc[80:90, 1] = np.nan
 
     ts_imputer = TimeSeriesImputer(lags=[1, 2])
-    imputed_df = ts_imputer(df, before="2020-02-19") # 50th day
+    imputed_df = ts_imputer(df, before="2020-02-19")  # 50th day
 
     assert not imputed_df.iloc[:50]["feature_0"].isnull().sum()
     assert imputed_df.iloc[50:]["feature_0"].isnull().sum() == 0
@@ -82,7 +82,7 @@ def test_timeseries_imputer_after():
     df.iloc[80:90, 1] = np.nan
 
     ts_imputer = TimeSeriesImputer(lags=[1, 2])
-    imputed_df = ts_imputer(df, after="2020-02-19") # 50th day
+    imputed_df = ts_imputer(df, after="2020-02-19")  # 50th day
 
     assert imputed_df.iloc[:50]["feature_0"].isnull().sum() > 0
     assert not imputed_df.iloc[50:]["feature_0"].isnull().sum()
@@ -97,7 +97,7 @@ def test_timeseries_imputer_before_and_after():
     df.iloc[80:90, 1] = np.nan
 
     ts_imputer = TimeSeriesImputer(lags=[1, 2])
-    imputed_df = ts_imputer(df, after="2020-01-30", before="2020-02-29") # 30th and 60th day
+    imputed_df = ts_imputer(df, after="2020-01-30", before="2020-02-29")  # 30th and 60th day
 
     assert imputed_df.iloc[:30]["feature_0"].isnull().sum() > 0
     assert not imputed_df.iloc[30:60]["feature_0"].isnull().sum()
