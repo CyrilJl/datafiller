@@ -220,7 +220,7 @@ def optimask(
         raise ValueError(f"Pareto optimization did not converge after {step} steps.")
 
     # Find the largest rectangle in the pareto-optimal ordering
-    i0, j0, area = _get_largest_rectangle(hx, m, n)
+    i0, j0, area = _get_largest_rectangle(hx, len(rows), len(cols))
 
     if area == 0:
         return np.array([], dtype=np.uint32), np.array([], dtype=np.uint32)
