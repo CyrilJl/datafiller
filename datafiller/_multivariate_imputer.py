@@ -1,8 +1,9 @@
 """Core implementation of the DataFiller imputer."""
 
-from typing import Any, Iterable, Tuple
+from typing import Any, Iterable, Tuple, Union
 
 import numpy as np
+import pandas as pd
 from numba import njit, prange
 from sklearn.base import RegressorMixin
 from sklearn.linear_model import LinearRegression
@@ -257,6 +258,42 @@ def _index_to_mask(x: np.ndarray, n: int) -> np.ndarray:
     return ret
 
 
+def _dataframe_rows_to_impute_to_indices(rows_to_impute, index):
+    """Converts row labels to integer indices for a DataFrame."""
+    if rows_to_impute is None:
+        return np.arange(len(index))
+
+    to_impute_list = (
+        [rows_to_impute]
+        if not isinstance(rows_to_impute, Iterable) or isinstance(rows_to_impute, str)
+        else list(rows_to_impute)
+    )
+
+    indexer = index.get_indexer(to_impute_list)
+    if np.any(indexer == -1):
+        missing = [l for l, i in zip(to_impute_list, indexer) if i == -1]
+        raise ValueError(f"Row labels not found in index: {missing}")
+    return indexer
+
+
+def _dataframe_cols_to_impute_to_indices(cols_to_impute, columns):
+    """Converts column labels to integer indices for a DataFrame."""
+    if cols_to_impute is None:
+        return np.arange(len(columns))
+
+    to_impute_list = (
+        [cols_to_impute]
+        if not isinstance(cols_to_impute, Iterable) or isinstance(cols_to_impute, str)
+        else list(cols_to_impute)
+    )
+
+    indexer = columns.get_indexer(to_impute_list)
+    if np.any(indexer == -1):
+        missing = [l for l, i in zip(to_impute_list, indexer) if i == -1]
+        raise ValueError(f"Column labels not found in columns: {missing}")
+    return indexer
+
+
 class MultivariateImputer:
     """Imputes missing values in a 2D numpy array.
 
@@ -481,11 +518,11 @@ class MultivariateImputer:
 
     def __call__(
         self,
-        x: np.ndarray,
-        rows_to_impute: None | int | Iterable[int] = None,
-        cols_to_impute: None | int | Iterable[int] = None,
+        x: Union[np.ndarray, pd.DataFrame],
+        rows_to_impute: None | int | Iterable[int] | Iterable[str] = None,
+        cols_to_impute: None | int | Iterable[int] | Iterable[str] = None,
         n_nearest_features: None | float | int = None,
-    ) -> np.ndarray:
+    ) -> Union[np.ndarray, pd.DataFrame]:
         """Imputes missing values in a 2D numpy array.
 
         Args:
@@ -502,6 +539,14 @@ class MultivariateImputer:
         Returns:
             The imputed data matrix.
         """
+        is_df = isinstance(x, pd.DataFrame)
+        if is_df:
+            original_index = x.index
+            original_columns = x.columns
+            rows_to_impute = _dataframe_rows_to_impute_to_indices(rows_to_impute, original_index)
+            cols_to_impute = _dataframe_cols_to_impute_to_indices(cols_to_impute, original_columns)
+            x = x.to_numpy(dtype=np.float64)
+
         n_nearest_features = self._validate_input(x, rows_to_impute, cols_to_impute, n_nearest_features)
 
         m, n = x.shape
@@ -516,5 +561,8 @@ class MultivariateImputer:
 
         for i, col in enumerate(tqdm(cols_to_impute, leave=False, disable=(not self.verbose))):
             self._impute_col(x, x_imputed, col, mask_nan, mask_rows_to_impute, iy, ix, n_nearest_features, scores, i)
+
+        if is_df:
+            return pd.DataFrame(x_imputed, index=original_index, columns=original_columns)
 
         return x_imputed
