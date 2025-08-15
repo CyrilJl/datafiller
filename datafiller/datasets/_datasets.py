@@ -2,6 +2,7 @@ import pandas as pd
 
 # This file will contain functions to fetch popular time series datasets.
 
+
 def load_pems_bay() -> pd.DataFrame:
     """Downloads and returns the PEMS-BAY dataset.
 
@@ -17,10 +18,7 @@ def load_pems_bay() -> pd.DataFrame:
     try:
         import pooch
     except ImportError:
-        raise ImportError(
-            "pooch is required to download the dataset. "
-            "Please install it with `pip install pooch`."
-        )
+        raise ImportError("pooch is required to download the dataset. Please install it with `pip install pooch`.")
 
     url = "https://zenodo.org/records/5724362/files/PEMS-BAY.csv"
     known_hash = "md5:c8dea58987a5882e946217c22fdb8256"
@@ -34,7 +32,7 @@ def load_pems_bay() -> pd.DataFrame:
 
     # Load the dataset with pandas
     df: pd.DataFrame = pd.read_csv(file_path, index_col=0, parse_dates=[0])
-    df.index.name = "time"
+    df = df.rename_axis(index="time", columns="sensor_id")
     df = df.asfreq("5min")
 
     return df
