@@ -3,15 +3,14 @@ API Reference
 
 This page provides a detailed API reference for the classes and functions in the `datafiller` library.
 
-***********************
 Imputer Classes
-***********************
+***************
 
 .. admonition:: MultivariateImputer
    :class: dropdown
 
    .. autoclass:: datafiller.MultivariateImputer
-      :members: __init__, __call__
+      :members: __call__
       :undoc-members:
       :show-inheritance:
 
@@ -19,7 +18,7 @@ Imputer Classes
    :class: dropdown
 
    .. autoclass:: datafiller.TimeSeriesImputer
-      :members: __init__, __call__
+      :members: __call__
       :undoc-members:
       :show-inheritance:
 
