@@ -1,6 +1,5 @@
-###########
 API Reference
-###########
+#############
 
 This page provides a detailed API reference for the classes and functions in the `datafiller` library.
 
@@ -8,7 +7,7 @@ This page provides a detailed API reference for the classes and functions in the
 Imputer Classes
 ***********************
 
-.. admonition:: datafiller.MultivariateImputer
+.. admonition:: MultivariateImputer
    :class: dropdown
 
    .. autoclass:: datafiller.MultivariateImputer
@@ -16,7 +15,7 @@ Imputer Classes
       :undoc-members:
       :show-inheritance:
 
-.. admonition:: datafiller.TimeSeriesImputer
+.. admonition:: TimeSeriesImputer
    :class: dropdown
 
    .. autoclass:: datafiller.TimeSeriesImputer
@@ -28,7 +27,7 @@ Imputer Classes
 Low-Level Functions
 ***********************
 
-.. admonition:: datafiller._optimask.optimask
+.. admonition:: optimask
    :class: dropdown
 
    .. automodule:: datafiller._optimask
