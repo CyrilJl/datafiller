@@ -1,8 +1,8 @@
-import pytest
 import pandas as pd
+import pytest
 from pytest_mock import MockerFixture
 
-from datafiller.datasets import load_pems_bay
+from datafiller.datasets._datasets import load_pems_bay
 
 
 def test_load_pems_bay_success() -> None:
