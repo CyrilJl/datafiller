@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from numba import njit, prange
 from sklearn.base import RegressorMixin
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import Ridge
 from tqdm.auto import tqdm
 
 from ._optimask import optimask
@@ -171,10 +171,8 @@ def _mask_index_to_impute(size: int, to_impute: np.ndarray) -> np.ndarray:
         A boolean mask of length `size`.
     """
     ret = np.zeros(size, dtype=np.bool_)
-    set_to_impute = set(to_impute)
-    for k in prange(size):
-        if k in set_to_impute:
-            ret[k] = True
+    for i in prange(len(to_impute)):
+        ret[to_impute[i]] = True
     return ret
 
 
@@ -330,7 +328,7 @@ class MultivariateImputer:
 
     def __init__(
         self,
-        estimator: RegressorMixin = LinearRegression(),
+        estimator: RegressorMixin = Ridge(),
         verbose: int = 0,
         min_samples_train: int = 50,
     ):
