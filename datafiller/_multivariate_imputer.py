@@ -523,21 +523,31 @@ class MultivariateImputer:
         cols_to_impute: None | int | Iterable[int] | Iterable[str] = None,
         n_nearest_features: None | float | int = None,
     ) -> Union[np.ndarray, pd.DataFrame]:
-        """Imputes missing values in a 2D numpy array.
+        """Imputes missing values in the input data.
+
+        The method can handle both NumPy arrays and pandas DataFrames.
 
         Args:
             x: The input data matrix with missing values (NaNs).
-            rows_to_impute: The indices of rows to impute.
-                If None, all rows are considered. Defaults to None.
-            cols_to_impute: The indices of columns to impute.
-                If None, all columns are considered. Defaults to None.
+                Can be a numpy array or a pandas DataFrame.
+            rows_to_impute: The rows to impute. The interpretation of this
+                argument depends on the type of `x`.
+                - If `x` is a NumPy array, this must be a list of integer indices.
+                - If `x` is a pandas DataFrame, this must be a list of index labels.
+                If None, all rows are considered for imputation. Defaults to None.
+            cols_to_impute: The columns to impute. The interpretation of this
+                argument depends on the type of `x`.
+                - If `x` is a NumPy array, this must be a list of integer indices.
+                - If `x` is a pandas DataFrame, this must be a list of column labels.
+                If None, all columns are considered for imputation. Defaults to None.
             n_nearest_features: The number of features to use for
                 imputation. If it's an int, it's the absolute number of
                 features. If it's a float, it's the fraction of features to
                 use. If None, all features are used. Defaults to None.
 
         Returns:
-            The imputed data matrix.
+            The imputed data matrix. The return type will match the input type
+            (NumPy array or pandas DataFrame).
         """
         is_df = isinstance(x, pd.DataFrame)
         if is_df:
