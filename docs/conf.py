@@ -33,6 +33,7 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 html_title = project
 html_theme = "sphinxawesome_theme"
+html_permalinks = False
 html_theme_options = {
     "main_nav_links": {
         "Algorithm": "algorithm",
