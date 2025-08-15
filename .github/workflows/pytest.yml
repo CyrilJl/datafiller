@@ -10,10 +10,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4  # Also updated to v4 (optional but recommended)
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5  # Updated to v5 (latest)
         with:
           python-version: "3.12"
 
@@ -27,7 +27,7 @@ jobs:
           pytest --cov=datafiller --cov-report=xml --cov-report=html
 
       - name: Upload coverage reports as artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # Updated from v3 → v4
         with:
           name: coverage-reports
           path: |
@@ -35,7 +35,7 @@ jobs:
             coverage.xml
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v3  # Still v3 (latest as of 2024)
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ./coverage.xml
