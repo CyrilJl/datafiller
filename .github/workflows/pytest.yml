@@ -24,7 +24,15 @@ jobs:
 
       - name: Test with pytest
         run: |
-          pytest --cov=datafiller --cov-report=xml
+          pytest --cov=datafiller --cov-report=xml --cov-report=html
+
+      - name: Upload coverage reports as artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-reports
+          path: |
+            htmlcov/
+            coverage.xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
