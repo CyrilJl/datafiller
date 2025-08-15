@@ -8,14 +8,16 @@ This page provides a detailed API reference for the classes and functions in the
 Imputer Classes
 ***********************
 
-.. toggle::
+.. admonition:: datafiller.MultivariateImputer
+   :class: dropdown
 
    .. autoclass:: datafiller.MultivariateImputer
       :members: __init__, __call__
       :undoc-members:
       :show-inheritance:
 
-.. toggle::
+.. admonition:: datafiller.TimeSeriesImputer
+   :class: dropdown
 
    .. autoclass:: datafiller.TimeSeriesImputer
       :members: __init__, __call__
@@ -26,7 +28,8 @@ Imputer Classes
 Low-Level Functions
 ***********************
 
-.. toggle::
+.. admonition:: datafiller._optimask.optimask
+   :class: dropdown
 
    .. automodule:: datafiller._optimask
       :members: optimask
