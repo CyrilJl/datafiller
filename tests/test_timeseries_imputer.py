@@ -114,3 +114,41 @@ def test_timeseries_imputer_rows_to_impute_priority():
 
     assert not imputed_df.iloc[10:20]["feature_0"].isnull().sum()
     assert imputed_df.iloc[80:90]["feature_1"].isnull().sum() > 0
+
+
+def test_timeseries_imputer_invalid_lags():
+    with pytest.raises(ValueError, match="lags must be an iterable of integers"):
+        TimeSeriesImputer(lags=1)
+    with pytest.raises(ValueError, match="lags must be an iterable of integers"):
+        TimeSeriesImputer(lags=[1, "a"])
+
+
+def test_timeseries_imputer_invalid_index():
+    df = pd.DataFrame(np.random.rand(10, 2))
+    ts_imputer = TimeSeriesImputer()
+    with pytest.raises(TypeError, match="DataFrame index must be a DatetimeIndex"):
+        ts_imputer(df)
+
+
+def test_timeseries_imputer_single_col_to_impute():
+    df = generate_ts_data(100, 3)
+    df.iloc[10:20, 0] = np.nan
+    df.iloc[30:40, 1] = np.nan
+    ts_imputer = TimeSeriesImputer(lags=[1, 2])
+
+    # Test with single string
+    imputed_df_str = ts_imputer(df.copy(), cols_to_impute="feature_0")
+    assert not imputed_df_str["feature_0"].isnull().sum()
+    assert imputed_df_str["feature_1"].isnull().sum() > 0
+
+    # Test with single int
+    imputed_df_int = ts_imputer(df.copy(), cols_to_impute=0)
+    assert not imputed_df_int["feature_0"].isnull().sum()
+    assert imputed_df_int["feature_1"].isnull().sum() > 0
+
+
+def test_timeseries_imputer_invalid_col_type():
+    df = generate_ts_data(100, 2)
+    ts_imputer = TimeSeriesImputer()
+    with pytest.raises(ValueError, match="cols_to_impute must be an int, str, or an iterable of ints or strs"):
+        ts_imputer(df, cols_to_impute=[0, 1.5])
