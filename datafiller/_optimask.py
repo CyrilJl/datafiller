@@ -31,6 +31,29 @@ def groupby_max(a: np.ndarray, b: np.ndarray, n: int) -> np.ndarray:
     return ret
 
 
+@njit(uint32[:](uint32[:], uint32[:], uint32), boundscheck=True, cache=True)
+def numba_setdiff1d(a: np.ndarray, b: np.ndarray, n: int) -> np.ndarray:
+    """Numba-jitted setdiff1d for uint32 arrays."""
+    in_b = np.zeros(n, dtype=bool_)
+    for x in b:
+        in_b[x] = True
+
+    count = 0
+    for x in a:
+        if not in_b[x]:
+            count += 1
+
+    result = np.empty(count, dtype=np.uint32)
+
+    i = 0
+    for x in a:
+        if not in_b[x]:
+            result[i] = x
+            i += 1
+
+    return result
+
+
 @njit(UniTuple(uint32[:], 2)(uint32[:], uint32[:], uint32[:]), parallel=True, boundscheck=True, cache=True)
 def apply_p_step(p_step, a, b):
     """Applies a permutation to two arrays."""
@@ -226,7 +249,7 @@ def optimask(
         return np.array([], dtype=np.uint32), np.array([], dtype=np.uint32)
 
     # Determine which columns and rows to keep for imputation
-    cols_to_keep = np.setdiff1d(cols, cols_with_nan[p_cols][:i0])
-    rows_to_keep = np.setdiff1d(rows, rows_with_nan[p_rows][:j0])
+    cols_to_keep = numba_setdiff1d(cols, cols_with_nan[p_cols][:i0], n)
+    rows_to_keep = numba_setdiff1d(rows, rows_with_nan[p_rows][:j0], m)
 
     return rows_to_keep, cols_to_keep
