@@ -105,3 +105,128 @@ def test_multivariate_imputer_dataframe_label_not_found():
 
     with pytest.raises(ValueError, match="Row labels not found"):
         imputer(df, rows_to_impute=["r3"])
+
+
+from datafiller._multivariate_imputer import (
+    _dataframe_cols_to_impute_to_indices,
+    _dataframe_rows_to_impute_to_indices,
+    _process_to_impute,
+    preimpute,
+)
+
+
+def test_process_to_impute():
+    assert np.array_equal(_process_to_impute(5, None), np.arange(5))
+    assert np.array_equal(_process_to_impute(5, 2), np.array([2]))
+    assert np.array_equal(_process_to_impute(5, [1, 3]), np.array([1, 3]))
+
+
+def test_preimpute():
+    x = np.array([[1, np.nan], [3, 5]], dtype=float)
+    xp = preimpute(x)
+    assert np.array_equal(xp, [[1, 5], [3, 5]])
+
+
+def test_preimpute_all_nan_column():
+    x = np.array([[1, np.nan], [2, np.nan]], dtype=float)
+    with pytest.raises(ValueError, match="One or more columns are all NaNs"):
+        preimpute(x)
+
+
+def test_validate_input_errors():
+    imputer = MultivariateImputer()
+    x = np.random.rand(10, 5)
+
+    class NotNumpy:
+        pass
+
+    with pytest.raises(ValueError, match="x must be a numpy array"):
+        imputer(NotNumpy())
+
+    with pytest.raises(ValueError, match="x must be a 2D array"):
+        imputer(np.random.rand(10))
+
+    with pytest.raises(ValueError, match="x must have a numeric dtype"):
+        imputer(np.array([["a", "b"], ["c", "d"]]))
+
+    with pytest.raises(ValueError, match="x cannot contain infinity"):
+        x_inf = x.copy()
+        x_inf[0, 0] = np.inf
+        imputer(x_inf)
+
+    with pytest.raises(ValueError, match="rows_to_impute must have an integer dtype"):
+        imputer(x, rows_to_impute=np.array([0.5, 1.5]))
+
+    with pytest.raises(ValueError, match="rows_to_impute must be a list of integers between 0 and 9"):
+        imputer(x, rows_to_impute=np.array([10]))
+
+    with pytest.raises(ValueError, match="rows_to_impute must be a list of integers between 0 and 9"):
+        imputer(x, rows_to_impute=[10])
+
+    with pytest.raises(ValueError, match="rows_to_impute must be a list of integers between 0 and 9"):
+        imputer(x, rows_to_impute=[0, "a"])
+
+    with pytest.raises(ValueError, match="cols_to_impute must be a list of integers between 0 and 4"):
+        imputer(x, cols_to_impute=[5])
+
+    with pytest.raises(ValueError, match="cols_to_impute must be a list of integers between 0 and 4"):
+        imputer(x, cols_to_impute=[0, "a"])
+
+    with pytest.raises(ValueError, match="If n_nearest_features is a float, it must be in"):
+        imputer(x, n_nearest_features=1.1)
+
+    with pytest.raises(ValueError, match="If n_nearest_features is a float, it must be in"):
+        imputer(x, n_nearest_features=0.0)
+
+    with pytest.raises(ValueError, match="n_nearest_features resulted in 0 features"):
+        imputer(np.random.rand(10, 10), n_nearest_features=0.01)
+
+    with pytest.raises(ValueError, match="n_nearest_features must be an int or float"):
+        imputer(x, n_nearest_features="not a number")
+
+    with pytest.raises(ValueError, match="n_nearest_features must be between 1 and 5"):
+        imputer(x, n_nearest_features=6)
+
+    with pytest.raises(ValueError, match="n_nearest_features must be between 1 and 5"):
+        imputer(x, n_nearest_features=0)
+
+
+def test_get_sampled_cols_zero_scores(mocker):
+    mocker.patch("numpy.random.default_rng", return_value=mocker.Mock(choice=lambda a, size, replace, p: a[:size]))
+    imputer = MultivariateImputer()
+    scores = np.zeros((1, 5))
+    # with p=None, it should do a uniform choice
+    sampled_cols = imputer._get_sampled_cols(5, 3, scores, 0)
+    assert len(sampled_cols) == 3
+    assert len(np.unique(sampled_cols)) == 3
+    assert np.array_equal(sampled_cols, np.array([0, 1, 2]))  # due to mock
+
+
+def test_imputer_no_nans_in_col_to_impute():
+    imputer = MultivariateImputer()
+    x = np.array([[1, np.nan], [2, 4]], dtype=float)
+    x_imputed = imputer(x, cols_to_impute=0)
+    assert np.array_equal(x, x_imputed, equal_nan=True)
+
+
+def test_imputer_all_nans_in_col_to_impute():
+    imputer = MultivariateImputer()
+    x = np.array([[np.nan, 1], [np.nan, 2]], dtype=float)
+    x_imputed = imputer(x, cols_to_impute=0)
+    assert np.array_equal(x, x_imputed, equal_nan=True)
+
+
+def test_dataframe_to_indices_single_item():
+    df_num_index = pd.DataFrame(np.random.rand(3, 3), index=[10, 20, 30], columns=[1, 2, 3])
+    rows = _dataframe_rows_to_impute_to_indices(20, df_num_index.index)
+    assert np.array_equal(rows, [1])
+    cols = _dataframe_cols_to_impute_to_indices(3, df_num_index.columns)
+    assert np.array_equal(cols, [2])
+
+
+def test_dataframe_to_indices_tuple():
+    df = pd.DataFrame(np.random.rand(3, 3), index=["r1", "r2", "r3"], columns=["c1", "c2", "c3"])
+    rows = _dataframe_rows_to_impute_to_indices(("r1", "r3"), df.index)
+    assert np.array_equal(rows, [0, 2])
+    cols = _dataframe_cols_to_impute_to_indices(("c1", "c3"), df.columns)
+    assert np.array_equal(cols, [0, 2])
