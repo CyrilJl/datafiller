@@ -310,6 +310,9 @@ class MultivariateImputer:
         verbose (int, optional): The verbosity level. Defaults to 0.
         min_samples_train (int, optional): The minimum number of samples
             required to train a model. Defaults to 50.
+        rng (int, optional): A seed for the random number generator. This is
+            used for reproducible feature sampling when `n_nearest_features`
+            is not None. Defaults to None.
 
     .. code-block:: python
 
