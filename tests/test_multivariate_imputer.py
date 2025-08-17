@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from datafiller import MultivariateImputer
+from sklearn.linear_model import Ridge
 
 
 def generate_data(n_samples, n_features, mean, cov):
@@ -192,7 +193,7 @@ def test_validate_input_errors():
 
 
 def test_get_sampled_cols_zero_scores(mocker):
-    mocker.patch("numpy.random.default_rng", return_value=mocker.Mock(choice=lambda a, size, replace, p: a[:size]))
+    mocker.patch("numpy.random.RandomState", return_value=mocker.Mock(choice=lambda a, size, replace, p: a[:size]))
     imputer = MultivariateImputer()
     scores = np.zeros((1, 5))
     # with p=None, it should do a uniform choice
@@ -230,3 +231,25 @@ def test_dataframe_to_indices_tuple():
     assert np.array_equal(rows, [0, 2])
     cols = _dataframe_cols_to_impute_to_indices(("c1", "c3"), df.columns)
     assert np.array_equal(cols, [0, 2])
+
+
+def test_reproducible_imputation():
+    data = np.array([[1, 2, 3, 4, 5],
+                       [6, 7, 8, 9, 10],
+                       [11, 12, 13, 14, 15],
+                       [16, 17, 18, 19, 20],
+                       [21, 22, 23, 24, 25]], dtype=float)
+    data[1, 1] = np.nan
+    data[2, 3] = np.nan
+    data[4, 0] = np.nan
+
+    imputer1 = MultivariateImputer(estimator=Ridge(random_state=0), min_samples_train=2, rng=42)
+    imputer2 = MultivariateImputer(estimator=Ridge(random_state=0), min_samples_train=2, rng=42)
+    imputer3 = MultivariateImputer(estimator=Ridge(random_state=0), min_samples_train=2, rng=43)
+
+    imputed1 = imputer1(data.copy(), n_nearest_features=3)
+    imputed2 = imputer2(data.copy(), n_nearest_features=3)
+    imputed3 = imputer3(data.copy(), n_nearest_features=3)
+
+    assert np.array_equal(imputed1, imputed2)
+    assert not np.array_equal(imputed1, imputed3)
