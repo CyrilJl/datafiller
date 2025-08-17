@@ -256,10 +256,10 @@ def test_reproducible_imputation():
 
 def test_multivariate_imputer_with_categorical_data():
     data = {
-        'numerical_1': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-        'numerical_2': [1.1, 2.2, np.nan, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9, 10.1],
-        'categorical_1': ['A', 'B', 'A', 'C', 'B', 'A', 'C', np.nan, 'B', 'A'],
-        'categorical_2': ['X', 'Y', 'Z', 'X', 'Y', 'Z', 'X', 'Y', np.nan, 'Z']
+        "numerical_1": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        "numerical_2": [1.1, 2.2, np.nan, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9, 10.1],
+        "categorical_1": ["A", "B", "A", "C", "B", "A", "C", np.nan, "B", "A"],
+        "categorical_2": ["X", "Y", "Z", "X", "Y", "Z", "X", "Y", np.nan, "Z"],
     }
     df = pd.DataFrame(data)
 
@@ -270,5 +270,5 @@ def test_multivariate_imputer_with_categorical_data():
     assert df_imputed.shape == df.shape
     assert (df_imputed.columns == df.columns).all()
     assert not df_imputed.isnull().values.any()
-    assert df_imputed['categorical_1'].dtype == 'object'
-    assert df_imputed['categorical_2'].dtype == 'object'
+    assert df_imputed["categorical_1"].dtype == "object"
+    assert df_imputed["categorical_2"].dtype == "object"
