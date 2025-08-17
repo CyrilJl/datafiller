@@ -139,7 +139,7 @@ def _validate_input(
         raise ValueError("x must be a numpy array.")
     if x.ndim != 2:
         raise ValueError(f"x must be a 2D array, but got {x.ndim} dimensions.")
-    if not np.issubdtype(x.dtype, np.number) and x.dtype != "object":
+    if not np.issubdtype(x.dtype, np.number) and x.dtype != 'object':
         raise ValueError(f"x must have a numeric dtype, but got {x.dtype}.")
     if np.issubdtype(x.dtype, np.number) and np.isinf(x).any():
         raise ValueError("x cannot contain infinity.")

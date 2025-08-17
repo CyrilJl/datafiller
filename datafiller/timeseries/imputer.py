@@ -47,7 +47,8 @@ class TimeSeriesImputer:
     def __init__(
         self,
         lags: Iterable[int] = (1,),
-        estimator: RegressorMixin = LinearRegression(),
+        regressor: RegressorMixin = None,
+        classifier: RegressorMixin = None,
         verbose: int = 0,
         min_samples_train: int = 50,
     ):
@@ -57,7 +58,8 @@ class TimeSeriesImputer:
             raise ValueError("lags cannot contain 0.")
         self.lags = lags
         self.multivariate_imputer = MultivariateImputer(
-            estimator=estimator,
+            regressor=regressor,
+            classifier=classifier,
             verbose=verbose,
             min_samples_train=min_samples_train,
         )
