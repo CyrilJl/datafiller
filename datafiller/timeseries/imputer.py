@@ -4,7 +4,7 @@ from sklearn.base import RegressorMixin
 from sklearn.linear_model import LinearRegression
 from typing import Iterable, Union
 
-from ._multivariate_imputer import MultivariateImputer
+from ..multivariate.imputer import MultivariateImputer
 
 
 class TimeSeriesImputer:
