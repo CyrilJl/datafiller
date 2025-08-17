@@ -48,11 +48,11 @@ def diff1d(index, index_with_nan, permutation, index_split, max_val):
             count += 1
 
     result = np.empty(count, dtype=index.dtype)
-    index = 0
+    pnt = 0
     for val in index:
         if val <= max_val and not to_exclude[val]:
-            result[index] = val
-            index += 1
+            result[pnt] = val
+            pnt += 1
 
     return result
 
