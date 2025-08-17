@@ -38,16 +38,15 @@ def nan_positions(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
                 ix[cnt] = j
                 cnt += 1
 
-    return (
-        mask_nan,
-        iy[:cnt],
-        ix[:cnt],
-    )
+    return mask_nan, iy[:cnt], ix[:cnt]
 
 
 @njit(boundscheck=True, cache=True)
 def nan_positions_subset(
-    iy: np.ndarray, ix: np.ndarray, mask_subset_rows: np.ndarray, mask_subset_cols: np.ndarray
+    iy: np.ndarray,
+    ix: np.ndarray,
+    mask_subset_rows: np.ndarray,
+    mask_subset_cols: np.ndarray,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Finds NaN positions within a subset of rows and columns.
 
@@ -71,10 +70,7 @@ def nan_positions_subset(
             sub_ix[cnt] = col
             cnt += 1
 
-    return (
-        sub_iy[:cnt],
-        sub_ix[:cnt],
-    )
+    return sub_iy[:cnt], sub_ix[:cnt]
 
 
 @njit(parallel=True, boundscheck=True, cache=True)
@@ -93,6 +89,14 @@ def _subset(X: np.ndarray, rows: np.ndarray, columns: np.ndarray) -> np.ndarray:
     for i in prange(len(rows)):
         for j in range(len(columns)):
             Xs[i, j] = X[rows[i], columns[j]]
+    return Xs
+
+
+@njit(boundscheck=True, cache=True)
+def _subset_one_column(X: np.ndarray, rows: np.ndarray, col: int) -> np.ndarray:
+    Xs = np.empty(len(rows), dtype=X.dtype)
+    for i in range(len(rows)):
+        Xs[i] = X[rows[i], col]
     return Xs
 
 
@@ -513,7 +517,8 @@ class MultivariateImputer:
                     continue  # Not enough data to train a model
 
                 X_train = _subset(X=x, rows=rows, columns=cols)
-                self.estimator.fit(X=X_train, y=x[rows, col_to_impute])
+                y_train = _subset_one_column(X=x, rows=rows, col=col_to_impute)
+                self.estimator.fit(X=X_train, y=y_train)
                 x_imputed[index_predict, col_to_impute] = self.estimator.predict(
                     _subset(X=x, rows=index_predict, columns=cols)
                 )
