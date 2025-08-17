@@ -31,23 +31,42 @@ def groupby_max(a: np.ndarray, b: np.ndarray, n: int) -> np.ndarray:
     return ret
 
 
-@njit(uint32[:](uint32[:], uint32[:], uint32), boundscheck=True, cache=True)
-def numba_setdiff1d(a: np.ndarray, b: np.ndarray, n: int) -> np.ndarray:
-    """Numba-jitted setdiff1d for uint32 arrays."""
-    in_b = np.zeros(n, dtype=bool_)
-    for x in b:
-        in_b[x] = True
+@njit(uint32[:](uint32[:], uint32[:], uint32[:], uint32, uint32), boundscheck=True, cache=True)
+def _get_elements_to_keep(
+    elements: np.ndarray,
+    elements_with_nan: np.ndarray,
+    p_elements: np.ndarray,
+    slice_idx: int,
+    max_val: int,
+) -> np.ndarray:
+    """
+    Computes the elements to keep by performing a permuted set difference.
 
-    count = 0
-    for x in a:
-        if not in_b[x]:
-            count += 1
+    This is equivalent to, but faster than:
+    elements_to_remove = elements_with_nan[p_elements][:slice_idx]
+    np.setdiff1d(elements, elements_to_remove)
+    """
+    # Create a boolean mask for the elements that should be removed.
+    is_to_remove = np.zeros(max_val, dtype=np.bool_)
 
-    result = np.empty(count, dtype=np.uint32)
+    # Apply the permutation and slicing to identify elements to remove
+    # and mark them in the boolean mask. This avoids creating an
+    # intermediate array for `elements_to_remove`.
+    for i in range(slice_idx):
+        idx = p_elements[i]
+        element_to_remove = elements_with_nan[idx]
+        is_to_remove[element_to_remove] = True
 
+    # Count how many elements will be kept to pre-allocate the result array.
+    # This is faster than looping over `elements` a second time.
+    num_to_keep = len(elements) - np.sum(is_to_remove[elements])
+
+    result = np.empty(num_to_keep, dtype=elements.dtype)
+
+    # Populate the result array with the elements to keep.
     i = 0
-    for x in a:
-        if not in_b[x]:
+    for x in elements:
+        if not is_to_remove[x]:
             result[i] = x
             i += 1
 
@@ -249,7 +268,7 @@ def optimask(
         return np.array([], dtype=np.uint32), np.array([], dtype=np.uint32)
 
     # Determine which columns and rows to keep for imputation
-    cols_to_keep = numba_setdiff1d(cols, cols_with_nan[p_cols][:i0], n)
-    rows_to_keep = numba_setdiff1d(rows, rows_with_nan[p_rows][:j0], m)
+    cols_to_keep = _get_elements_to_keep(cols, cols_with_nan, p_cols, i0, n)
+    rows_to_keep = _get_elements_to_keep(rows, rows_with_nan, p_rows, j0, m)
 
     return rows_to_keep, cols_to_keep
