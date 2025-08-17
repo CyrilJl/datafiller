@@ -1,8 +1,15 @@
 import numpy as np
 import pandas as pd
 import pytest
-from datafiller import MultivariateImputer
 from sklearn.linear_model import Ridge
+
+from datafiller import MultivariateImputer
+from datafiller._multivariate_imputer import (
+    _dataframe_cols_to_impute_to_indices,
+    _dataframe_rows_to_impute_to_indices,
+    _process_to_impute,
+    preimpute,
+)
 
 
 def generate_data(n_samples, n_features, mean, cov):
@@ -106,14 +113,6 @@ def test_multivariate_imputer_dataframe_label_not_found():
 
     with pytest.raises(ValueError, match="Row labels not found"):
         imputer(df, rows_to_impute=["r3"])
-
-
-from datafiller._multivariate_imputer import (
-    _dataframe_cols_to_impute_to_indices,
-    _dataframe_rows_to_impute_to_indices,
-    _process_to_impute,
-    preimpute,
-)
 
 
 def test_process_to_impute():
