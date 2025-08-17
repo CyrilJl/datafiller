@@ -234,11 +234,10 @@ def test_dataframe_to_indices_tuple():
 
 
 def test_reproducible_imputation():
-    data = np.array([[1, 2, 3, 4, 5],
-                       [6, 7, 8, 9, 10],
-                       [11, 12, 13, 14, 15],
-                       [16, 17, 18, 19, 20],
-                       [21, 22, 23, 24, 25]], dtype=float)
+    data = np.array(
+        [[1, 2, 3, 4, 5], [6, 7, 8, 9, 10], [11, 12, 13, 14, 15], [16, 17, 18, 19, 20], [21, 22, 23, 24, 25]],
+        dtype=float,
+    )
     data[1, 1] = np.nan
     data[2, 3] = np.nan
     data[4, 0] = np.nan
