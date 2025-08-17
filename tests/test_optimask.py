@@ -1,16 +1,6 @@
 import numpy as np
 import pytest
-
-from datafiller._optimask import (
-    _get_largest_rectangle,
-    _process_index,
-    apply_p_step,
-    groupby_max,
-    is_decreasing,
-    numba_apply_permutation,
-    numba_apply_permutation_inplace,
-    optimask,
-)
+from datafiller._optimask import optimask
 
 
 def get_nan_indices(matrix):
@@ -122,6 +112,17 @@ def test_optimask_no_valid_rectangle():
     # With this checkerboard-like pattern, the largest clean area is 3x2=6.
     # The current heuristic finds a 2x2 area. This test verifies the current behavior.
     assert len(rows_to_keep) * len(cols_to_keep) >= 4
+
+
+from datafiller._optimask import (
+    _get_largest_rectangle,
+    _process_index,
+    apply_p_step,
+    groupby_max,
+    is_decreasing,
+    numba_apply_permutation,
+    numba_apply_permutation_inplace,
+)
 
 
 def test_get_largest_rectangle_branch():
