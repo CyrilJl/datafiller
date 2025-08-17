@@ -17,6 +17,17 @@ The key steps for imputing a single column are:
 
 This process is repeated for each column that has missing data.
 
+Handling Categorical Data
+*************************
+
+When the input data is a pandas DataFrame, `datafiller` can also handle categorical columns (i.e., columns with `object` or `category` dtype). The approach is similar to the one for numerical data, but with a few key differences:
+
+1.  **Separate Models**: Instead of a single `estimator`, the `MultivariateImputer` accepts a `regressor` for numerical columns and a `classifier` for categorical columns.
+2.  **One-Hot Encoding**: When a column is being imputed, the categorical features used for prediction are transformed using one-hot encoding. This allows the model to use categorical information effectively.
+3.  **Label Encoding for Target**: If the target column (the one being imputed) is categorical, its labels are encoded into integers before being passed to the classifier. The predicted integer labels are then transformed back to their original format.
+
+This dual-model strategy allows `datafiller` to use the most appropriate technique for each type of data, leading to more accurate imputations in mixed-type datasets.
+
 The `optimask` Algorithm
 ************************
 

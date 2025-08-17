@@ -74,7 +74,7 @@ def test_multivariate_imputer_dataframe_with_labels():
 
     # original nan positions: (1,1), (2,2), (3,3)
 
-    imputer = MultivariateImputer(min_samples_train=2)
+    imputer = MultivariateImputer(min_samples_train=1)
 
     # Case 1: impute column 'B' only
     df_imputed_col = imputer(df.copy(), cols_to_impute="B")
@@ -242,9 +242,9 @@ def test_reproducible_imputation():
     data[2, 3] = np.nan
     data[4, 0] = np.nan
 
-    imputer1 = MultivariateImputer(estimator=Ridge(random_state=0), min_samples_train=2, rng=42)
-    imputer2 = MultivariateImputer(estimator=Ridge(random_state=0), min_samples_train=2, rng=42)
-    imputer3 = MultivariateImputer(estimator=Ridge(random_state=0), min_samples_train=2, rng=43)
+    imputer1 = MultivariateImputer(regressor=Ridge(random_state=0), min_samples_train=2, rng=42)
+    imputer2 = MultivariateImputer(regressor=Ridge(random_state=0), min_samples_train=2, rng=42)
+    imputer3 = MultivariateImputer(regressor=Ridge(random_state=0), min_samples_train=2, rng=43)
 
     imputed1 = imputer1(data.copy(), n_nearest_features=3)
     imputed2 = imputer2(data.copy(), n_nearest_features=3)
@@ -252,3 +252,23 @@ def test_reproducible_imputation():
 
     assert np.array_equal(imputed1, imputed2)
     assert not np.array_equal(imputed1, imputed3)
+
+
+def test_multivariate_imputer_with_categorical_data():
+    data = {
+        'numerical_1': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        'numerical_2': [1.1, 2.2, np.nan, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9, 10.1],
+        'categorical_1': ['A', 'B', 'A', 'C', 'B', 'A', 'C', np.nan, 'B', 'A'],
+        'categorical_2': ['X', 'Y', 'Z', 'X', 'Y', 'Z', 'X', 'Y', np.nan, 'Z']
+    }
+    df = pd.DataFrame(data)
+
+    imputer = MultivariateImputer(min_samples_train=2)
+    df_imputed = imputer(df)
+
+    assert isinstance(df_imputed, pd.DataFrame)
+    assert df_imputed.shape == df.shape
+    assert (df_imputed.columns == df.columns).all()
+    assert not df_imputed.isnull().values.any()
+    assert df_imputed['categorical_1'].dtype == 'object'
+    assert df_imputed['categorical_2'].dtype == 'object'
