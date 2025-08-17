@@ -178,16 +178,23 @@ class MultivariateImputer:
         mask_valid = ~mask_nan
 
         # Determine feature types for ColumnTransformer
-        feature_types = ['categorical' if pd.api.types.is_object_dtype(x[:, c]) or pd.api.types.is_categorical_dtype(x[:,c]) else 'numerical' for c in sampled_cols]
+        feature_types = [
+            "categorical"
+            if pd.api.types.is_object_dtype(x[:, c]) or pd.api.types.is_categorical_dtype(x[:, c])
+            else "numerical"
+            for c in sampled_cols
+        ]
 
-        categorical_features = sampled_cols[np.array(feature_types) == 'categorical']
-        numerical_features = sampled_cols[np.array(feature_types) == 'numerical']
+        categorical_features = sampled_cols[np.array(feature_types) == "categorical"]
+        numerical_features = sampled_cols[np.array(feature_types) == "numerical"]
 
         preprocessor = ColumnTransformer(
             transformers=[
-                ('num', 'passthrough', numerical_features),
-                ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), categorical_features)
-            ], remainder='drop')
+                ("num", "passthrough", numerical_features),
+                ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), categorical_features),
+            ],
+            remainder="drop",
+        )
 
         X_transformed = preprocessor.fit_transform(x)
 
@@ -276,7 +283,7 @@ class MultivariateImputer:
             original_index = x.index
             original_columns = x.columns
 
-            categorical_cols = x.select_dtypes(include=['category', 'object']).columns.tolist()
+            categorical_cols = x.select_dtypes(include=["category", "object"]).columns.tolist()
             numerical_cols = x.select_dtypes(include=np.number).columns.tolist()
 
             # Keep track of original dtypes
@@ -312,7 +319,7 @@ class MultivariateImputer:
             # Create a float version of x for scoring, replacing non-numeric with NaN
             x_float = np.full(x.shape, np.nan, dtype=float)
             for c in range(x.shape[1]):
-                x_float[:, c] = pd.to_numeric(x[:, c], errors='coerce')
+                x_float[:, c] = pd.to_numeric(x[:, c], errors="coerce")
             scores = scoring(x_float, cols_to_impute)
         else:
             scores = None
@@ -324,10 +331,21 @@ class MultivariateImputer:
         iy, ix = np.where(mask_nan)
 
         for i, col_idx in enumerate(tqdm(cols_to_impute, leave=False, disable=(not self.verbose))):
-
             is_categorical = col_idx in [original_columns.get_loc(c) for c in categorical_cols] if is_df else False
 
-            self._impute_col(x, x_imputed, col_idx, mask_nan, mask_rows_to_impute, iy, ix, n_nearest_features, scores, i, is_categorical)
+            self._impute_col(
+                x,
+                x_imputed,
+                col_idx,
+                mask_nan,
+                mask_rows_to_impute,
+                iy,
+                ix,
+                n_nearest_features,
+                scores,
+                i,
+                is_categorical,
+            )
 
         if is_df:
             df_imputed = pd.DataFrame(x_imputed, index=original_index, columns=original_columns)
