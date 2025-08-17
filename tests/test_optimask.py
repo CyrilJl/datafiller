@@ -1,6 +1,16 @@
 import numpy as np
 import pytest
-from datafiller._optimask import optimask
+
+from datafiller._optimask import (
+    _get_largest_rectangle,
+    _process_index,
+    apply_p_step,
+    groupby_max,
+    is_decreasing,
+    numba_apply_permutation,
+    numba_apply_permutation_inplace,
+    optimask,
+)
 
 
 def get_nan_indices(matrix):
@@ -114,18 +124,6 @@ def test_optimask_no_valid_rectangle():
     assert len(rows_to_keep) * len(cols_to_keep) >= 4
 
 
-from datafiller._optimask import (
-    _get_largest_rectangle,
-    _process_index,
-    apply_p_step,
-    groupby_max,
-    is_decreasing,
-    numba_apply_permutation,
-    numba_apply_permutation_inplace,
-    numba_setdiff1d,
-)
-
-
 def test_get_largest_rectangle_branch():
     heights = np.array([1, 2, 3])
     m, n = 5, 4  # n > len(heights)
@@ -161,14 +159,6 @@ def test_groupby_max():
     result = groupby_max(a, b, n)
     # expected: ret[0] = max(0, 5+1, 8+1) = 9. ret[1] = max(0, 2+1, 4+1) = 5. ret[2] = max(0, 3+1) = 4
     assert np.array_equal(result, [9, 5, 4])
-
-
-def test_numba_setdiff1d():
-    a = np.array([1, 2, 3, 4, 5], dtype=np.uint32)
-    b = np.array([2, 4], dtype=np.uint32)
-    n = 6
-    result = numba_setdiff1d(a, b, n)
-    assert np.array_equal(result, [1, 3, 5])
 
 
 def test_apply_p_step():
