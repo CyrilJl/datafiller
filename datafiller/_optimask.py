@@ -31,25 +31,28 @@ def groupby_max(a: np.ndarray, b: np.ndarray, n: int) -> np.ndarray:
     return ret
 
 
-@njit(uint32[:](uint32[:], uint32[:], uint32), boundscheck=True, cache=True)
-def numba_setdiff1d(a: np.ndarray, b: np.ndarray, n: int) -> np.ndarray:
-    """Numba-jitted setdiff1d for uint32 arrays."""
-    in_b = np.zeros(n, dtype=bool_)
-    for x in b:
-        in_b[x] = True
+@njit(uint32[:](uint32[:], uint32[:], uint32[:], uint32, uint32), boundscheck=True, cache=True, parallel=True)
+def diff1d(index, index_with_nan, permutation, index_split, max_val):
+    """
+    equivalent to np.setdiff1d(rows, rows_with_nan[p_rows][:j0])
+    """
+    to_exclude = np.zeros(max_val, dtype=np.bool_)
+
+    for i in prange(index_split):
+        val = index_with_nan[permutation[i]]
+        to_exclude[val] = True
 
     count = 0
-    for x in a:
-        if not in_b[x]:
+    for val in index:
+        if val <= max_val and not to_exclude[val]:
             count += 1
 
-    result = np.empty(count, dtype=np.uint32)
-
-    i = 0
-    for x in a:
-        if not in_b[x]:
-            result[i] = x
-            i += 1
+    result = np.empty(count, dtype=index.dtype)
+    index = 0
+    for val in index:
+        if val <= max_val and not to_exclude[val]:
+            result[index] = val
+            index += 1
 
     return result
 
@@ -249,7 +252,7 @@ def optimask(
         return np.array([], dtype=np.uint32), np.array([], dtype=np.uint32)
 
     # Determine which columns and rows to keep for imputation
-    cols_to_keep = numba_setdiff1d(cols, cols_with_nan[p_cols][:i0], n)
-    rows_to_keep = numba_setdiff1d(rows, rows_with_nan[p_rows][:j0], m)
+    cols_to_keep = diff1d(cols, cols_with_nan, p_cols, i0, n)
+    rows_to_keep = diff1d(rows, rows_with_nan, p_rows, j0, m)
 
     return rows_to_keep, cols_to_keep

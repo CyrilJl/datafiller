@@ -1,6 +1,6 @@
 """Core implementation of the DataFiller imputer."""
 
-from typing import Any, Iterable, Tuple, Union
+from typing import Iterable, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -503,7 +503,11 @@ class MultivariateImputer:
                     mask_usable_cols,
                 )
                 rows, cols = optimask(
-                    iy=iy_trial, ix=ix_trial, rows=trainable_rows, cols=usable_cols, global_matrix_size=(m, n)
+                    iy=iy_trial,
+                    ix=ix_trial,
+                    rows=trainable_rows,
+                    cols=usable_cols,
+                    global_matrix_size=(m, n),
                 )
                 if (len(rows) < self.min_samples_train) or (not len(cols)):
                     continue  # Not enough data to train a model
