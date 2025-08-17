@@ -1,12 +1,10 @@
-#########
 Algorithm
 #########
 
 The `datafiller` library uses a model-based approach to impute missing values. This section provides an overview of the algorithm, particularly the `optimask` utility that makes the imputation process robust.
 
-**********************
 The Core Idea
-**********************
+**************
 
 For each column that contains missing values, `datafiller` treats that column as a target variable and the other columns as features. It then trains a machine learning model to predict the missing values based on the features that are available.
 
@@ -19,9 +17,8 @@ The key steps for imputing a single column are:
 
 This process is repeated for each column that has missing data.
 
-**********************
 The `optimask` Algorithm
-**********************
+************************
 
 A crucial part of the imputation process is selecting the best possible data for training the model. If the feature columns used for training also contain missing values, it can lead to poor model performance and inaccurate imputations.
 
