@@ -335,10 +335,12 @@ class MultivariateImputer:
         estimator: RegressorMixin = Ridge(),
         verbose: int = 0,
         min_samples_train: int = 50,
+        rng: Union[int, None] = None,
     ):
         self.estimator = estimator
         self.verbose = int(verbose)
         self.min_samples_train = min_samples_train
+        self._rng = np.random.RandomState(rng)
 
     def _validate_input(
         self,
@@ -432,7 +434,7 @@ class MultivariateImputer:
             p[np.isnan(p)] = 0
             if p.sum() == 0:
                 p = None
-            sampled_cols = np.random.default_rng().choice(
+            sampled_cols = self._rng.choice(
                 a=np.arange(n_features),
                 size=n_nearest_features,
                 replace=False,
