@@ -1,7 +1,7 @@
 from importlib.metadata import version
 
-from ._multivariate_imputer import MultivariateImputer
-from ._timeseries_imputer import TimeSeriesImputer
+from .multivariate.imputer import MultivariateImputer
+from .timeseries.imputer import TimeSeriesImputer
 
 __all__ = ["MultivariateImputer", "TimeSeriesImputer"]
 
