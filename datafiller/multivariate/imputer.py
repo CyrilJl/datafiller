@@ -236,7 +236,7 @@ class MultivariateImputer:
             original_columns = x.columns
             rows_to_impute = _dataframe_rows_to_impute_to_indices(rows_to_impute, original_index)
             cols_to_impute = _dataframe_cols_to_impute_to_indices(cols_to_impute, original_columns)
-            x = x.to_numpy(dtype=np.float64)
+            x = x.to_numpy(dtype=np.float32)
 
         n_nearest_features = _validate_input(x, rows_to_impute, cols_to_impute, n_nearest_features)
 
