@@ -108,11 +108,11 @@ def test_multivariate_imputer_dataframe_label_not_found():
         imputer(df, rows_to_impute=["r3"])
 
 
+from datafiller.multivariate._scoring import preimpute
 from datafiller.multivariate._utils import (
     _dataframe_cols_to_impute_to_indices,
     _dataframe_rows_to_impute_to_indices,
     _process_to_impute,
-    preimpute,
 )
 
 

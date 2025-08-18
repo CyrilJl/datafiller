@@ -29,6 +29,11 @@ class TimeSeriesImputer:
             used for reproducible feature sampling when `n_nearest_features`
             is not None. Defaults to None.
         verbose (int, optional): The verbosity level. Defaults to 0.
+        scoring (str or callable, optional): The scoring function to use for
+            feature selection. If 'default', the default scoring function is
+            used. If a callable, it must take two arguments (the data matrix
+            and the columns to impute) and return a score matrix.
+            Defaults to 'default'.
 
     .. code-block:: python
 
@@ -55,6 +60,7 @@ class TimeSeriesImputer:
         min_samples_train: int = 50,
         rng: Union[int, None] = None,
         verbose: int = 0,
+        scoring: Union[str, callable] = "default",
     ):
         if not isinstance(lags, Iterable) or not all(isinstance(i, int) for i in lags):
             raise ValueError("lags must be an iterable of integers.")
@@ -66,6 +72,7 @@ class TimeSeriesImputer:
             verbose=verbose,
             min_samples_train=min_samples_train,
             rng=rng,
+            scoring=scoring,
         )
 
     def __call__(
