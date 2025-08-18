@@ -37,8 +37,8 @@ html_theme = "sphinxawesome_theme"
 html_permalinks = False
 html_theme_options = {
     "main_nav_links": {
-        "Algorithm": "algorithm",
         "How To Use": "how_to_use",
+        "Algorithm": "algorithm",
         "API Reference": "api",
     },
     "extra_header_link_icons": {
