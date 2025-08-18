@@ -1,8 +1,9 @@
+from typing import Iterable, Union
+
 import numpy as np
 import pandas as pd
 from sklearn.base import RegressorMixin
-from sklearn.linear_model import LinearRegression
-from typing import Iterable, Union
+from sklearn.linear_model import Ridge
 
 from ..multivariate.imputer import MultivariateImputer
 
@@ -47,7 +48,7 @@ class TimeSeriesImputer:
     def __init__(
         self,
         lags: Iterable[int] = (1,),
-        estimator: RegressorMixin = LinearRegression(),
+        estimator: RegressorMixin = Ridge(),
         verbose: int = 0,
         min_samples_train: int = 50,
     ):
