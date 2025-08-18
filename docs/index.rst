@@ -6,6 +6,7 @@
 
 .. toctree::
    :maxdepth: 1
+   :hidden:
    :caption: Contents:
 
    how_to_use
