@@ -43,11 +43,11 @@ The ``MultivariateImputer`` has several parameters that can be tuned to control 
 
 **Initialization Parameters (``__init__``)**
 
-*   **estimator**: The regressor model to use for imputation. It should be a scikit-learn compatible regressor. Defaults to ``FastRidge()``.
+*   **estimator**: The regressor model to use for imputation. It should be a lightweight model, as it is fitted many times. By default, a custom Ridge implementation is used.
 *   **verbose**: Controls the verbosity of the imputer. If ``True``, it will print progress bars. Defaults to ``False``.
-*   **min_samples_train**: The minimum number of samples required to train a model for a given column. Defaults to ``50``.
+*   **min_samples_train**: The minimum number of samples required to train a model for a given column. If, after the imputation, some values are still missing, it is likely that no training set with at least `min_samples_train` samples could be found. Defaults to ``50``.
 *   **rng**: A seed for the random number generator, which is used for reproducible feature sampling. Defaults to ``None``.
-*   **scoring**: The scoring function to use for feature selection. It can be ``'default'`` or a callable. Defaults to ``'default'``.
+*   **scoring**: The scoring function to use for feature selection. If 'default', the default scoring function is used. If a callable, it must take two arguments as input: the data matrix `X` (np.ndarray of shape `(n_samples, n_features)`) and the columns to impute `cols_to_impute` (np.ndarray of shape `(n_cols_to_impute,)`), and return a score matrix of shape `(n_cols_to_impute, n_features)`. Defaults to `'default'`.
 
 **Call Parameters (``__call__``)**
 
@@ -91,6 +91,41 @@ Here is a more advanced example that shows how to use some of the parameters.
     )
 
     print(df_imputed)
+
+Custom Scoring Function
+~~~~~~~~~~~~~~~~~~~~~~~
+
+You can provide a custom scoring function to control how the imputer selects features for imputation. The scoring function should take the data matrix `X` and the columns to impute `cols_to_impute` as input, and return a score matrix.
+
+Here is an example of a custom scoring function that simply returns a random score matrix.
+
+.. code-block:: python
+
+    import numpy as np
+    from datafiller.multivariate import MultivariateImputer
+
+    def random_scoring(X, cols_to_impute):
+        n_cols_to_impute = len(cols_to_impute)
+        n_features = X.shape[1]
+        return np.random.rand(n_cols_to_impute, n_features)
+
+    # Create a matrix with missing values
+    X = np.array([
+        [1.0, 2.0, np.nan, 4.0],
+        [5.0, 6.0, 7.0, 8.0],
+        [9.0, np.nan, 11.0, 12.0],
+    ])
+
+    # Initialize the imputer with the custom scoring function
+    imputer = MultivariateImputer(
+        scoring=random_scoring,
+        rng=42
+    )
+
+    # Impute using 2 nearest features, selected based on the random scores
+    X_imputed = imputer(X, n_nearest_features=2)
+
+    print(X_imputed)
 
 
 ********************

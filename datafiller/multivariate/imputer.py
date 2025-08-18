@@ -39,17 +39,24 @@ class MultivariateImputer:
 
     Args:
         estimator (RegressorMixin, optional): A scikit-learn compatible
-            regressor. Defaults to `LinearRegression()`.
+            regressor. It should be a lightweight model, as it is fitted many
+            times. By default, a custom Ridge implementation is used.
         verbose (int, optional): The verbosity level. Defaults to 0.
         min_samples_train (int, optional): The minimum number of samples
-            required to train a model. Defaults to 50.
+            required to train a model. If, after the imputation, some values
+            are still missing, it is likely that no training set with at least
+            `min_samples_train` samples could be found. Defaults to 50.
         rng (int, optional): A seed for the random number generator. This is
             used for reproducible feature sampling when `n_nearest_features`
             is not None. Defaults to None.
         scoring (str or callable, optional): The scoring function to use for
-            feature selection. If 'default', the default scoring function is
-            used. If a callable, it must take two arguments (the data matrix
-            and the columns to impute) and return a score matrix.
+            feature selection.
+            If 'default', the default scoring function is used.
+            If a callable, it must take two arguments as input: the data matrix
+            `X` (np.ndarray of shape `(n_samples, n_features)`) and the
+            columns to impute `cols_to_impute` (np.ndarray of shape
+            `(n_cols_to_impute,)`), and return a score matrix of shape
+            `(n_cols_to_impute, n_features)`.
             Defaults to 'default'.
 
     Examples:
