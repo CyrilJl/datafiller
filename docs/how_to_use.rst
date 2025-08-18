@@ -8,7 +8,7 @@ This guide provides detailed examples on how to use the `MultivariateImputer` an
 Multivariate Imputer
 ***********************
 
-The `MultivariateImputer` is the core of the library, designed to impute missing values in a 2D NumPy array.
+The `MultivariateImputer` is the core of the library, designed to impute missing values in a 2D NumPy array or pandas DataFrame.
 
 Basic Example
 =============
@@ -36,26 +36,61 @@ Here is a simple example of how to use the `MultivariateImputer`.
 
     print(X_imputed)
 
+Parameters
+----------
 
-Using a Different Estimator
-===========================
+The ``MultivariateImputer`` has several parameters that can be tuned to control the imputation process.
 
-You can use any scikit-learn compatible regressor as the estimator for imputation. For example, you can use a `RandomForestRegressor`.
+**Initialization Parameters (``__init__``)**
+
+*   **estimator**: The regressor model to use for imputation. It should be a scikit-learn compatible regressor. Defaults to ``FastRidge()``.
+*   **verbose**: Controls the verbosity of the imputer. If ``True``, it will print progress bars. Defaults to ``False``.
+*   **min_samples_train**: The minimum number of samples required to train a model for a given column. Defaults to ``50``.
+*   **rng**: A seed for the random number generator, which is used for reproducible feature sampling. Defaults to ``None``.
+*   **scoring**: The scoring function to use for feature selection. It can be ``'default'`` or a callable. Defaults to ``'default'``.
+
+**Call Parameters (``__call__``)**
+
+*   **rows_to_impute**: The specific rows to impute. Can be a list of indices. If ``None``, all rows are considered.
+*   **cols_to_impute**: The specific columns to impute. Can be a list of indices or column names (for DataFrames). If ``None``, all columns are considered.
+*   **n_nearest_features**: The number of nearest features to use for imputation. If it's an ``int``, it's the absolute number of features. If it's a ``float``, it's the fraction of total features. If ``None``, all features are used.
+
+Advanced Usage
+--------------
+
+Here is a more advanced example that shows how to use some of the parameters.
 
 .. code-block:: python
 
     import numpy as np
-    from datafiller import MultivariateImputer
+    import pandas as pd
+    from datafiller.multivariate import MultivariateImputer
     from sklearn.ensemble import RandomForestRegressor
 
-    X = np.random.rand(100, 10)
-    X[np.random.choice(X.size, 100, replace=False)] = np.nan
+    # Create a DataFrame with missing values
+    data = {
+        'A': [1, 2, np.nan, 4, 5],
+        'B': [np.nan, 2, 3, 4, 5],
+        'C': [1, 2, 3, np.nan, 5],
+        'D': [1, 2, 3, 4, np.nan]
+    }
+    df = pd.DataFrame(data)
 
     # Initialize the imputer with a RandomForestRegressor
-    imputer = MultivariateImputer(estimator=RandomForestRegressor(n_estimators=10))
-    X_imputed = imputer(X)
+    imputer = MultivariateImputer(
+        estimator=RandomForestRegressor(n_estimators=10, random_state=0),
+        verbose=1,
+        rng=0
+    )
 
-    print("Imputation successful:", not np.isnan(X_imputed).any())
+    # Impute only column 'A' and 'B', using only 2 nearest features
+    df_imputed = imputer(
+        df,
+        cols_to_impute=['A', 'B'],
+        n_nearest_features=2
+    )
+
+    print(df_imputed)
 
 
 ********************
@@ -91,5 +126,64 @@ The `TimeSeriesImputer` requires a pandas DataFrame with a `DatetimeIndex` that 
     # Initialize the imputer with lags [1, 2] and leads [-1, -2]
     ts_imputer = TimeSeriesImputer(lags=[1, 2, -1, -2])
     df_imputed = ts_imputer(df)
+
+    print(df_imputed)
+
+Parameters
+----------
+
+**Initialization Parameters (``__init__``)**
+
+*   **lags**: An iterable of integers specifying the lags and leads to create as autoregressive features. Positive integers create lags (e.g., `t-1`), and negative integers create leads (e.g., `t+1`). Defaults to `(1,)`.
+*   **estimator**: The regressor model to use for imputation. Defaults to `FastRidge()`.
+*   **min_samples_train**: The minimum number of samples required to train a model. Defaults to `50`.
+*   **rng**: A seed for the random number generator. Defaults to `None`.
+*   **verbose**: Controls the verbosity. Defaults to `0`.
+*   **scoring**: The scoring function for feature selection. Defaults to `'default'`.
+*   **interpolate_gaps_less_than**: The maximum length of gaps to interpolate linearly before model-based imputation. If `None`, no linear interpolation is performed. Defaults to `None`.
+
+**Call Parameters (``__call__``)**
+
+*   **rows_to_impute**: The indices of rows to impute. If `None`, all rows are considered.
+*   **cols_to_impute**: The indices or names of columns to impute. If `None`, all columns are considered.
+*   **n_nearest_features**: The number of features to use for imputation.
+*   **before**: A timestamp-like object. If specified, only rows before this timestamp are imputed.
+*   **after**: A timestamp-like object. If specified, only rows after this timestamp are imputed.
+
+Advanced Usage
+--------------
+
+This example shows how to use the `TimeSeriesImputer` to impute missing values in a specific time window.
+
+.. code-block:: python
+
+    import pandas as pd
+    import numpy as np
+    from datafiller.timeseries import TimeSeriesImputer
+
+    # Create a time series DataFrame with missing values
+    rng = pd.date_range('2023-01-01', periods=20, freq='D')
+    data = {
+        'feature1': np.sin(np.arange(20) * 0.5),
+        'feature2': np.cos(np.arange(20) * 0.5),
+    }
+    df = pd.DataFrame(data, index=rng)
+
+    # Add some missing values
+    df.loc['2023-01-05', 'feature1'] = np.nan
+    df.loc['2023-01-10', 'feature2'] = np.nan
+    df.loc['2023-01-15', 'feature1'] = np.nan
+
+    # Initialize the imputer with lags and linear interpolation
+    ts_imputer = TimeSeriesImputer(
+        lags=[1, 2, -1, -2],
+        interpolate_gaps_less_than=3
+    )
+
+    # Impute only the missing values that occured before 2023-01-12
+    df_imputed = ts_imputer(
+        df,
+        before='2023-01-12'
+    )
 
     print(df_imputed)
