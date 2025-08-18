@@ -59,8 +59,6 @@ def _dataframe_cols_to_impute_to_indices(cols_to_impute, columns):
     return indexer
 
 
-
-
 def _validate_input(
     x: np.ndarray,
     rows_to_impute: None | int | Iterable[int],
