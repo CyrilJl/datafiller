@@ -3,6 +3,7 @@ import pytest
 from sklearn.linear_model import Ridge
 from datafiller.multivariate._fast_ridge import FastRidge
 
+
 @pytest.mark.parametrize("fit_intercept", [True, False])
 def test_fast_ridge_vs_sklearn(fit_intercept):
     """
@@ -25,7 +26,7 @@ def test_fast_ridge_vs_sklearn(fit_intercept):
     fast_ridge_preds = fast_ridge.predict(X)
 
     # Fit sklearn's Ridge
-    sklearn_ridge = Ridge(alpha=alpha, fit_intercept=fit_intercept, solver='cholesky')
+    sklearn_ridge = Ridge(alpha=alpha, fit_intercept=fit_intercept, solver="cholesky")
     sklearn_ridge.fit(X, y)
     sklearn_preds = sklearn_ridge.predict(X)
 
