@@ -152,3 +152,26 @@ def test_timeseries_imputer_invalid_col_type():
     ts_imputer = TimeSeriesImputer()
     with pytest.raises(ValueError, match="cols_to_impute must be an int, str, or an iterable of ints or strs"):
         ts_imputer(df, cols_to_impute=[0, 1.5])
+
+
+def test_interpolate_small_gaps():
+    df = generate_ts_data(100, 2)
+    # Small gap of 2 in feature 0
+    df.iloc[10:12, 0] = np.nan
+    # Large gap of 10 in feature 0
+    df.iloc[20:30, 0] = np.nan
+    # Some NaNs in feature 1, but not overlapping with the large gap in feature 0
+    df.iloc[5:7, 1] = np.nan
+    df.iloc[40:45, 1] = np.nan
+
+    ts_imputer = TimeSeriesImputer(interpolate_gaps_less_than=3, lags=[1])
+    imputed_df = ts_imputer(df)
+
+    # Small gap should be imputed by interpolation
+    assert not imputed_df.iloc[10:12, 0].isnull().any()
+
+    # Large gap should be imputed by the multivariate imputer
+    assert not imputed_df.iloc[20:30, 0].isnull().any()
+
+    # All NaNs should be imputed
+    assert not imputed_df.isnull().sum().sum()
