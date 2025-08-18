@@ -45,7 +45,9 @@ class MultivariateImputer:
         min_samples_train (int, optional): The minimum number of samples
             required to train a model. If, after the imputation, some values
             are still missing, it is likely that no training set with at least
-            `min_samples_train` samples could be found. Defaults to 50.
+            `min_samples_train` samples could be found. Defaults to `None`,
+            which means that a model will be trained if at least one sample
+            is available.
         rng (int, optional): A seed for the random number generator. This is
             used for reproducible feature sampling when `n_nearest_features`
             is not None. Defaults to None.
@@ -83,13 +85,16 @@ class MultivariateImputer:
         self,
         estimator: RegressorMixin = FastRidge(),
         verbose: int = 0,
-        min_samples_train: int = 50,
+        min_samples_train: int | None = None,
         rng: Union[int, None] = None,
         scoring: Union[str, callable] = "default",
     ):
         self.estimator = estimator
         self.verbose = int(verbose)
-        self.min_samples_train = min_samples_train
+        if min_samples_train is None:
+            self.min_samples_train = 1
+        else:
+            self.min_samples_train = min_samples_train
         self._rng = np.random.RandomState(rng)
         if scoring == "default":
             self.scoring = scoring
