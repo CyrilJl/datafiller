@@ -252,3 +252,17 @@ def test_reproducible_imputation():
 
     assert np.array_equal(imputed1, imputed2)
     assert not np.array_equal(imputed1, imputed3)
+
+
+def test_multivariate_imputer_min_samples_train_none():
+    data = np.array([[1, 2], [np.nan, 4]], dtype=float)
+
+    # With min_samples_train=None (default), it should impute using the single available row.
+    imputer_none = MultivariateImputer()
+    imputed_none = imputer_none(data.copy())
+    assert not np.isnan(imputed_none).any()
+
+    # With min_samples_train=2, it should not be able to impute.
+    imputer_2 = MultivariateImputer(min_samples_train=2)
+    imputed_2 = imputer_2(data.copy())
+    assert np.isnan(imputed_2).any()

@@ -25,7 +25,8 @@ class TimeSeriesImputer:
         estimator (RegressorMixin, optional): A scikit-learn compatible
             estimator to use for imputation. Defaults to `LinearRegression()`.
         min_samples_train (int, optional): The minimum number of samples
-            required to train a model. Defaults to 50.
+            required to train a model. Defaults to `None`, which means that a
+            model will be trained if at least one sample is available.
         rng (int, optional): A seed for the random number generator. This is
             used for reproducible feature sampling when `n_nearest_features`
             is not None. Defaults to None.
@@ -61,7 +62,7 @@ class TimeSeriesImputer:
         self,
         lags: Iterable[int] = (1,),
         estimator: RegressorMixin = FastRidge(),
-        min_samples_train: int = 50,
+        min_samples_train: int | None = None,
         rng: Union[int, None] = None,
         verbose: int = 0,
         scoring: Union[str, callable] = "default",
@@ -73,6 +74,8 @@ class TimeSeriesImputer:
             raise ValueError("lags cannot contain 0.")
         self.lags = lags
         self.interpolate_gaps_less_than = interpolate_gaps_less_than
+        if min_samples_train is None:
+            min_samples_train = 1
         self.multivariate_imputer = MultivariateImputer(
             estimator=estimator,
             verbose=verbose,

@@ -175,3 +175,18 @@ def test_interpolate_small_gaps():
 
     # All NaNs should be imputed
     assert not imputed_df.isnull().sum().sum()
+
+
+def test_timeseries_imputer_min_samples_train_none():
+    df = generate_ts_data(3, 2)
+    df.iloc[1, 0] = np.nan
+
+    # With min_samples_train=None (default), it should impute.
+    ts_imputer_none = TimeSeriesImputer(lags=[1])
+    imputed_df_none = ts_imputer_none(df.copy())
+    assert not imputed_df_none.isnull().any().any()
+
+    # With min_samples_train=2, it should not be able to impute.
+    ts_imputer_2 = TimeSeriesImputer(lags=[1], min_samples_train=2)
+    imputed_df_2 = ts_imputer_2(df.copy())
+    assert imputed_df_2.isnull().any().any()
