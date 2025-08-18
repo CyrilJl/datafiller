@@ -20,12 +20,12 @@ from ._numba_utils import (
     unique2d,
     _mask_index_to_impute,
 )
+from ._scoring import scoring
 from ._utils import (
     _dataframe_cols_to_impute_to_indices,
     _dataframe_rows_to_impute_to_indices,
     _process_to_impute,
     _validate_input,
-    scoring,
 )
 
 
@@ -46,6 +46,11 @@ class MultivariateImputer:
         rng (int, optional): A seed for the random number generator. This is
             used for reproducible feature sampling when `n_nearest_features`
             is not None. Defaults to None.
+        scoring (str or callable, optional): The scoring function to use for
+            feature selection. If 'default', the default scoring function is
+            used. If a callable, it must take two arguments (the data matrix
+            and the columns to impute) and return a score matrix.
+            Defaults to 'default'.
 
     Examples:
         .. code-block:: python
@@ -73,11 +78,18 @@ class MultivariateImputer:
         verbose: int = 0,
         min_samples_train: int = 50,
         rng: Union[int, None] = None,
+        scoring: Union[str, callable] = "default",
     ):
         self.estimator = estimator
         self.verbose = int(verbose)
         self.min_samples_train = min_samples_train
         self._rng = np.random.RandomState(rng)
+        if scoring == "default":
+            self.scoring = scoring
+        elif callable(scoring):
+            self.scoring = scoring
+        else:
+            raise ValueError("`scoring` must be 'default' or a callable.")
 
     def _get_sampled_cols(
         self,
@@ -245,7 +257,13 @@ class MultivariateImputer:
         cols_to_impute = _process_to_impute(size=n, to_impute=cols_to_impute)
         mask_rows_to_impute = _mask_index_to_impute(size=m, to_impute=rows_to_impute)
 
-        scores = scoring(x, cols_to_impute) if n_nearest_features is not None else None
+        if n_nearest_features is not None:
+            if self.scoring == "default":
+                scores = scoring(x, cols_to_impute)
+            else:
+                scores = self.scoring(x, cols_to_impute)
+        else:
+            scores = None
 
         x_imputed = x.copy()
         mask_nan, iy, ix = nan_positions(x)
