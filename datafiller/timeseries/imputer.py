@@ -3,8 +3,8 @@ from typing import Iterable, Union
 import numpy as np
 import pandas as pd
 from sklearn.base import RegressorMixin
-from sklearn.linear_model import Ridge
 
+from ..multivariate._fast_ridge import FastRidge
 from ..multivariate.imputer import MultivariateImputer
 
 
@@ -51,7 +51,7 @@ class TimeSeriesImputer:
     def __init__(
         self,
         lags: Iterable[int] = (1,),
-        estimator: RegressorMixin = Ridge(),        
+        estimator: RegressorMixin = FastRidge(),
         min_samples_train: int = 50,
         rng: Union[int, None] = None,
         verbose: int = 0,
