@@ -5,10 +5,10 @@ from typing import Iterable, Union
 import numpy as np
 import pandas as pd
 from sklearn.base import RegressorMixin
-from sklearn.linear_model import Ridge
 from tqdm.auto import tqdm
 
 from .._optimask import optimask
+from ._fast_ridge import FastRidge
 from ._numba_utils import (
     _imputable_rows,
     _index_to_mask,
@@ -69,7 +69,7 @@ class MultivariateImputer:
 
     def __init__(
         self,
-        estimator: RegressorMixin = Ridge(),
+        estimator: RegressorMixin = FastRidge(),
         verbose: int = 0,
         min_samples_train: int = 50,
         rng: Union[int, None] = None,
