@@ -6,6 +6,7 @@ from sklearn.base import RegressorMixin
 
 from ..multivariate._fast_ridge import FastRidge
 from ..multivariate.imputer import MultivariateImputer
+from ._utils import interpolate_small_gaps
 
 
 class TimeSeriesImputer:
@@ -34,6 +35,9 @@ class TimeSeriesImputer:
             used. If a callable, it must take two arguments (the data matrix
             and the columns to impute) and return a score matrix.
             Defaults to 'default'.
+        interpolate_gaps_less_than (int, optional): The maximum length of
+            gaps to interpolate linearly. If None, no linear interpolation is
+            performed. Defaults to None.
 
     .. code-block:: python
 
@@ -61,12 +65,14 @@ class TimeSeriesImputer:
         rng: Union[int, None] = None,
         verbose: int = 0,
         scoring: Union[str, callable] = "default",
+        interpolate_gaps_less_than: int = None,
     ):
         if not isinstance(lags, Iterable) or not all(isinstance(i, int) for i in lags):
             raise ValueError("lags must be an iterable of integers.")
         if 0 in lags:
             raise ValueError("lags cannot contain 0.")
         self.lags = lags
+        self.interpolate_gaps_less_than = interpolate_gaps_less_than
         self.multivariate_imputer = MultivariateImputer(
             estimator=estimator,
             verbose=verbose,
@@ -118,6 +124,10 @@ class TimeSeriesImputer:
             raise TypeError("DataFrame index must be a DatetimeIndex.")
         if df.index.freq is None:
             raise ValueError("DataFrame index must have a frequency.")
+
+        if self.interpolate_gaps_less_than is not None:
+            for col in df.columns:
+                df[col] = interpolate_small_gaps(df[col], self.interpolate_gaps_less_than)
 
         original_cols = df.columns
         n_original_cols = len(original_cols)
