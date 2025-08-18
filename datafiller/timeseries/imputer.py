@@ -23,9 +23,12 @@ class TimeSeriesImputer:
             leads (e.g., `t+1`). Defaults to `(1,)`.
         estimator (RegressorMixin, optional): A scikit-learn compatible
             estimator to use for imputation. Defaults to `LinearRegression()`.
-        verbose (int, optional): The verbosity level. Defaults to 0.
         min_samples_train (int, optional): The minimum number of samples
             required to train a model. Defaults to 50.
+        rng (int, optional): A seed for the random number generator. This is
+            used for reproducible feature sampling when `n_nearest_features`
+            is not None. Defaults to None.
+        verbose (int, optional): The verbosity level. Defaults to 0.
 
     .. code-block:: python
 
@@ -48,9 +51,10 @@ class TimeSeriesImputer:
     def __init__(
         self,
         lags: Iterable[int] = (1,),
-        estimator: RegressorMixin = Ridge(),
-        verbose: int = 0,
+        estimator: RegressorMixin = Ridge(),        
         min_samples_train: int = 50,
+        rng: Union[int, None] = None,
+        verbose: int = 0,
     ):
         if not isinstance(lags, Iterable) or not all(isinstance(i, int) for i in lags):
             raise ValueError("lags must be an iterable of integers.")
@@ -61,6 +65,7 @@ class TimeSeriesImputer:
             estimator=estimator,
             verbose=verbose,
             min_samples_train=min_samples_train,
+            rng=rng,
         )
 
     def __call__(
