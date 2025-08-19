@@ -1,4 +1,5 @@
 """Core implementation of the DataFiller imputer."""
+
 import warnings
 from typing import Iterable, Union
 
