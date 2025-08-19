@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 
 
@@ -13,13 +15,15 @@ def preimpute(x: np.ndarray) -> np.ndarray:
     Raises:
         ValueError: If any column is entirely NaN.
     """
-    xp = x.copy()
-    col_means = np.nanmean(x, axis=0)
-    if np.isnan(col_means).any():
-        raise ValueError("One or more columns are all NaNs, which is not supported.")
-    nan_mask = np.isnan(x)
-    xp[nan_mask] = np.take(col_means, np.where(nan_mask)[1])
-    return xp
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        xp = x.copy()
+        col_means = np.nanmean(x, axis=0)
+        if np.isnan(col_means).any():
+            raise ValueError("One or more columns are all NaNs, which is not supported.")
+        nan_mask = np.isnan(x)
+        xp[nan_mask] = np.take(col_means, np.where(nan_mask)[1])
+        return xp
 
 
 def scoring(x: np.ndarray, cols_to_impute: np.ndarray) -> np.ndarray:
@@ -35,23 +39,26 @@ def scoring(x: np.ndarray, cols_to_impute: np.ndarray) -> np.ndarray:
     Returns:
         A score matrix.
     """
-    n = len(x)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
 
-    # Optimized isfinite calculation
-    isfinite = np.isfinite(x).astype("float32", copy=False)
+        n = len(x)
 
-    # Optimized in_common calculation
-    isfinite_cols = isfinite[:, cols_to_impute]
-    in_common = np.dot(isfinite_cols.T, isfinite) / n
+        # Optimized isfinite calculation
+        isfinite = np.isfinite(x).astype("float32", copy=False)
 
-    # Pre-impute and standardize
-    xp = preimpute(x)
-    mx = np.mean(xp, axis=0)
-    sx = np.std(xp, axis=0)
-    xp_standard = (xp - mx) / sx
+        # Optimized in_common calculation
+        isfinite_cols = isfinite[:, cols_to_impute]
+        in_common = np.dot(isfinite_cols.T, isfinite) / n
 
-    # Optimized correlation calculation
-    yp_standard = xp_standard[:, cols_to_impute]
-    corr = np.dot(yp_standard.T, xp_standard) / n
+        # Pre-impute and standardize
+        xp = preimpute(x)
+        mx = np.mean(xp, axis=0)
+        sx = np.std(xp, axis=0)
+        xp_standard = (xp - mx) / sx
 
-    return in_common * np.abs(corr)
+        # Optimized correlation calculation
+        yp_standard = xp_standard[:, cols_to_impute]
+        corr = np.dot(yp_standard.T, xp_standard) / n
+
+        return in_common * np.abs(corr)

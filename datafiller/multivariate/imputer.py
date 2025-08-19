@@ -1,5 +1,5 @@
 """Core implementation of the DataFiller imputer."""
-
+import warnings
 from typing import Iterable, Union
 
 import numpy as np
@@ -126,16 +126,18 @@ class MultivariateImputer:
             An array of column indices to use for imputation.
         """
         if n_nearest_features is not None:
-            p = scores[scores_index] / scores[scores_index].sum()
-            p[np.isnan(p)] = 0
-            if p.sum() == 0:
-                p = None
-            sampled_cols = self._rng.choice(
-                a=np.arange(n_features),
-                size=n_nearest_features,
-                replace=False,
-                p=p,
-            )
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=RuntimeWarning)
+                p = scores[scores_index] / scores[scores_index].sum()
+                p[np.isnan(p)] = 0
+                if p.sum() == 0:
+                    p = None
+                sampled_cols = self._rng.choice(
+                    a=np.arange(n_features),
+                    size=n_nearest_features,
+                    replace=False,
+                    p=p,
+                )
             return np.sort(sampled_cols)
         return np.arange(n_features)
 
