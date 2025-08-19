@@ -1,19 +1,17 @@
-##########
 How to Use
 ##########
 
-This guide provides detailed examples on how to use the `MultivariateImputer` and `TimeSeriesImputer`.
+This guide provides detailed examples on how to use the ``MultivariateImputer`` and ``TimeSeriesImputer``.
 
-***********************
 Multivariate Imputer
-***********************
+********************
 
-The `MultivariateImputer` is the core of the library, designed to impute missing values in a 2D NumPy array or pandas DataFrame.
+The ``MultivariateImputer`` is the core of the library, designed to impute missing values in a 2D NumPy array or pandas DataFrame.
 
 Basic Example
 =============
 
-Here is a simple example of how to use the `MultivariateImputer`.
+Here is a simple example of how to use the ``MultivariateImputer``.
 
 .. code-block:: python
 
@@ -41,7 +39,7 @@ Parameters
 
 The ``MultivariateImputer`` has several parameters that can be tuned to control the imputation process.
 
-**Initialization Parameters (``__init__``)**
+**Initialization Parameters**
 
 *   **estimator**: The regressor model to use for imputation. It should be a lightweight model, as it is fitted many times. By default, a custom Ridge implementation is used.
 *   **verbose**: Controls the verbosity of the imputer. If ``True``, it will print progress bars. Defaults to ``False``.
@@ -49,7 +47,7 @@ The ``MultivariateImputer`` has several parameters that can be tuned to control 
 *   **rng**: A seed for the random number generator, which is used for reproducible feature sampling. Defaults to ``None``.
 *   **scoring**: The scoring function to use for feature selection. If 'default', the default scoring function is used. If a callable, it must take two arguments as input: the data matrix `X` (np.ndarray of shape `(n_samples, n_features)`) and the columns to impute `cols_to_impute` (np.ndarray of shape `(n_cols_to_impute,)`), and return a score matrix of shape `(n_cols_to_impute, n_features)`. Defaults to `'default'`.
 
-**Call Parameters (``__call__``)**
+**Call Parameters**
 
 *   **rows_to_impute**: The specific rows to impute. Can be a list of indices. If ``None``, all rows are considered.
 *   **cols_to_impute**: The specific columns to impute. Can be a list of indices or column names (for DataFrames). If ``None``, all columns are considered.
@@ -95,7 +93,8 @@ Here is a more advanced example that shows how to use some of the parameters.
 Custom Scoring Function
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-You can provide a custom scoring function to control how the imputer selects features for imputation. The scoring function should take the data matrix `X` and the columns to impute `cols_to_impute` as input, and return a score matrix.
+You can provide a custom scoring function to control how the imputer selects features for imputation. The scoring function should
+take the data matrix `X` and the columns to impute `cols_to_impute` as input, and return a score matrix.
 
 Here is an example of a custom scoring function that simply returns a random score matrix.
 
@@ -127,17 +126,15 @@ Here is an example of a custom scoring function that simply returns a random sco
 
     print(X_imputed)
 
-
-********************
 Time Series Imputer
 ********************
 
-The `TimeSeriesImputer` is a wrapper around the `MultivariateImputer` that is specifically designed for time series data.
+The ``TimeSeriesImputer`` is a wrapper around the ``MultivariateImputer`` that is specifically designed for time series data.
 
 Basic Example
 =============
 
-The `TimeSeriesImputer` requires a pandas DataFrame with a `DatetimeIndex` that has a defined frequency.
+The ``TimeSeriesImputer`` requires a pandas DataFrame with a ``DatetimeIndex`` that has a defined frequency.
 
 .. code-block:: python
 
@@ -167,20 +164,20 @@ The `TimeSeriesImputer` requires a pandas DataFrame with a `DatetimeIndex` that 
 Parameters
 ----------
 
-**Initialization Parameters (``__init__``)**
+**Initialization Parameters**
 
 *   **lags**: An iterable of integers specifying the lags and leads to create as autoregressive features. Positive integers create lags (e.g., `t-1`), and negative integers create leads (e.g., `t+1`). Defaults to `(1,)`.
-*   **estimator**: The regressor model to use for imputation. Defaults to `FastRidge()`.
-*   **min_samples_train**: The minimum number of samples required to train a model. Defaults to `None`, which means that a model will be trained if at least one sample is available.
-*   **rng**: A seed for the random number generator. Defaults to `None`.
-*   **verbose**: Controls the verbosity. Defaults to `0`.
+*   **estimator**: The regressor model to use for imputation. Defaults to ``FastRidge()``.
+*   **min_samples_train**: The minimum number of samples required to train a model. Defaults to ``None``, which means that a model will be trained if at least one sample is available.
+*   **rng**: A seed for the random number generator. Defaults to ``None``.
+*   **verbose**: Controls the verbosity. Defaults to ``0``.
 *   **scoring**: The scoring function for feature selection. Defaults to `'default'`.
-*   **interpolate_gaps_less_than**: The maximum length of gaps to interpolate linearly before model-based imputation. If `None`, no linear interpolation is performed. Defaults to `None`.
+*   **interpolate_gaps_less_than**: The maximum length of gaps to interpolate linearly before model-based imputation. If ``None``, no linear interpolation is performed. Defaults to `None`.
 
 **Call Parameters (``__call__``)**
 
-*   **rows_to_impute**: The indices of rows to impute. If `None`, all rows are considered.
-*   **cols_to_impute**: The indices or names of columns to impute. If `None`, all columns are considered.
+*   **rows_to_impute**: The indices of rows to impute. If ``None``, all rows are considered.
+*   **cols_to_impute**: The indices or names of columns to impute. If ``None``, all columns are considered.
 *   **n_nearest_features**: The number of features to use for imputation.
 *   **before**: A timestamp-like object. If specified, only rows before this timestamp are imputed.
 *   **after**: A timestamp-like object. If specified, only rows after this timestamp are imputed.
@@ -188,7 +185,7 @@ Parameters
 Advanced Usage
 --------------
 
-This example shows how to use the `TimeSeriesImputer` to impute missing values in a specific time window.
+This example shows how to use the ``TimeSeriesImputer`` to impute missing values in a specific time window.
 
 .. code-block:: python
 
