@@ -1,8 +1,16 @@
-# DataFiller
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/CyrilJl/datafiller/main/docs/_static/datafiller_light.svg">
+  <img alt="datafiller logo" src="https://raw.githubusercontent.com/CyrilJl/datafiller/main/docs/_static/datafiller_dark.svg" width="50%" height="50%">
+</picture>
 
 [![PyPI version](https://badge.fury.io/py/datafiller.svg)](https://badge.fury.io/py/datafiller)
 [![codecov](https://codecov.io/github/CyrilJl/datafiller/graph/badge.svg?token=PXK2523PL9)](https://codecov.io/github/CyrilJl/datafiller)
 [![Documentation Status](https://readthedocs.org/projects/datafiller/badge/?version=latest)](https://datafiller.readthedocs.io/en/latest/?badge=latest)
+
+
+</div>
 
 **DataFiller** is a Python library for imputing missing values in datasets. It provides a flexible and powerful way to handle missing data in both numerical arrays and time series data.
 
