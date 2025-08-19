@@ -107,40 +107,49 @@ class MultivariateImputer:
     def _get_sampled_cols(
         self,
         n_features: int,
+        col_to_impute: int,
         n_nearest_features: int | None,
         scores: np.ndarray | None,
         scores_index: int,
     ) -> np.ndarray:
         """Selects the feature columns to use for imputing a specific column.
-
         If `n_nearest_features` is specified, it selects a subset of features
         based on the provided scores. Otherwise, it returns all features.
-
         Args:
             n_features: The total number of features.
+            col_to_impute: The index of the column to impute.
             n_nearest_features: The number of features to select.
             scores: A matrix of scores for feature selection.
             scores_index: The index of the column being imputed in the
                 scores matrix.
-
         Returns:
             An array of column indices to use for imputation.
         """
+        cols_to_sample_from = np.arange(n_features)
+        cols_to_sample_from = cols_to_sample_from[cols_to_sample_from != col_to_impute]
+
         if n_nearest_features is not None:
+            # The scores are for all n_features, but we are sampling from n_features - 1
+            # The scores array is (n_cols_to_impute, n_features)
+            # The scores for the column to impute against itself should be 0 or NaN.
+            p = scores[scores_index]
+            p = p[cols_to_sample_from]
+
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", category=RuntimeWarning)
-                p = scores[scores_index] / scores[scores_index].sum()
+                p = p / p.sum()
                 p[np.isnan(p)] = 0
                 if p.sum() == 0:
                     p = None
+                n_nearest_features = min(n_nearest_features, len(cols_to_sample_from))
                 sampled_cols = self._rng.choice(
-                    a=np.arange(n_features),
+                    a=cols_to_sample_from,
                     size=n_nearest_features,
                     replace=False,
                     p=p,
                 )
             return np.sort(sampled_cols)
-        return np.arange(n_features)
+        return cols_to_sample_from
 
     def _impute_col(
         self,
@@ -175,7 +184,7 @@ class MultivariateImputer:
         """
         m, n = x.shape
 
-        sampled_cols = self._get_sampled_cols(n, n_nearest_features, scores, scores_index)
+        sampled_cols = self._get_sampled_cols(n, col_to_impute, n_nearest_features, scores, scores_index)
 
         imputable_rows = _imputable_rows(mask_nan=mask_nan, col=col_to_impute, mask_rows_to_impute=mask_rows_to_impute)
         if not len(imputable_rows):
