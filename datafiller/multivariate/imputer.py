@@ -104,7 +104,7 @@ class MultivariateImputer:
         else:
             raise ValueError("`scoring` must be 'default' or a callable.")
 
-    @np.errstate(all='ignore')
+    @np.errstate(all="ignore")
     def _get_sampled_cols(
         self,
         n_features: int,
