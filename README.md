@@ -2,14 +2,14 @@
 
 [![PyPI version](https://badge.fury.io/py/datafiller.svg)](https://badge.fury.io/py/datafiller)
 [![codecov](https://codecov.io/github/CyrilJl/datafiller/graph/badge.svg?token=PXK2523PL9)](https://codecov.io/github/CyrilJl/datafiller)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Documentation Status](https://readthedocs.org/projects/datafiller/badge/?version=latest)](https://datafiller.readthedocs.io/en/latest/?badge=latest)
 
 **DataFiller** is a Python library for imputing missing values in datasets. It provides a flexible and powerful way to handle missing data in both numerical arrays and time series data.
 
 ## Key Features
 
 - **Model-Based Imputation**: Uses machine learning models (like linear regression) to predict and fill missing values.
-- **Time Series Support**: A dedicated `TimeSeriesImputer` that automatically creates lagged and lead features for imputation.
+- **Time Series Support**: A dedicated ``TimeSeriesImputer`` that automatically creates lagged and lead features for imputation.
 - **Efficient**: Leverages Numba for performance-critical sections.
 - **Smart Feature Selection**: Finds the optimal subset of data to use for training imputation models.
 - **Scikit-Learn Compatible**: Integrates with the scikit-learn ecosystem.
@@ -26,7 +26,7 @@ pip install datafiller
 
 ### Imputing a NumPy Array
 
-The `MultivariateImputer` can be used to fill missing values (`NaN`) in a 2D NumPy array.
+The ``MultivariateImputer`` can be used to fill missing values (`NaN`) in a 2D NumPy array.
 
 ```python
 import numpy as np
@@ -52,7 +52,7 @@ print(X_imputed)
 
 ### Imputing a Time Series DataFrame
 
-The `TimeSeriesImputer` is designed to work with pandas DataFrames that have a `DatetimeIndex`. It automatically creates autoregressive features (lags and leads) to improve imputation accuracy.
+The ``TimeSeriesImputer`` is designed to work with pandas DataFrames that have a ``DatetimeIndex``. It automatically creates autoregressive features (lags and leads) to improve imputation accuracy.
 
 ```python
 import pandas as pd
@@ -80,6 +80,6 @@ print(df_imputed)
 
 ## How It Works
 
-DataFiller uses a model-based imputation strategy. For each column containing missing values, it trains a regression model using the other columns as features. The rows used for training are carefully selected to be the largest, most complete rectangular subset of the data, which is found using the `optimask` algorithm. This ensures that the training data is of the highest possible quality, leading to more accurate imputations.
+DataFiller uses a model-based imputation strategy. For each column containing missing values, it trains a regression model using the other columns as features. The rows used for training are carefully selected to be the largest, most complete rectangular subset of the data, which is found using the ``optimask`` algorithm. This ensures that the training data is of the highest possible quality, leading to more accurate imputations.
 
 For more details, see the [documentation](https://datafiller.readthedocs.io/).
