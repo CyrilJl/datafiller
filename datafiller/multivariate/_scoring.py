@@ -19,8 +19,6 @@ def preimpute(x: np.ndarray) -> np.ndarray:
         warnings.simplefilter("ignore", category=RuntimeWarning)
         xp = x.copy()
         col_means = np.nanmean(x, axis=0)
-        if np.isnan(col_means).any():
-            raise ValueError("One or more columns are all NaNs, which is not supported.")
         nan_mask = np.isnan(x)
         xp[nan_mask] = np.take(col_means, np.where(nan_mask)[1])
         return xp
