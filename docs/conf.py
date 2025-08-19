@@ -35,7 +35,10 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 html_title = project
 html_theme = "sphinxawesome_theme"
 html_permalinks = False
+html_static_path = ["_static"]
 html_theme_options = {
+    "logo_light": "_static/logo_light.svg",
+    "logo_dark": "_static/logo_dark.svg",
     "main_nav_links": {
         "How To Use": "how_to_use",
         "Algorithm": "algorithm",
