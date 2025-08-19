@@ -1,7 +1,7 @@
 import numpy as np
 
 
-@np.errstate(all='ignore')
+@np.errstate(all="ignore")
 def preimpute(x: np.ndarray) -> np.ndarray:
     """Performs a simple pre-imputation by filling NaNs with column means.
 
@@ -21,7 +21,7 @@ def preimpute(x: np.ndarray) -> np.ndarray:
     return xp
 
 
-@np.errstate(all='ignore')
+@np.errstate(all="ignore")
 def scoring(x: np.ndarray, cols_to_impute: np.ndarray) -> np.ndarray:
     """Calculates a score for each feature pair to guide feature selection.
 
