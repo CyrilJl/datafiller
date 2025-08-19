@@ -104,6 +104,7 @@ class MultivariateImputer:
         else:
             raise ValueError("`scoring` must be 'default' or a callable.")
 
+    @np.errstate(all='ignore')
     def _get_sampled_cols(
         self,
         n_features: int,
@@ -132,22 +133,18 @@ class MultivariateImputer:
             # The scores are for all n_features, but we are sampling from n_features - 1
             # The scores array is (n_cols_to_impute, n_features)
             # The scores for the column to impute against itself should be 0 or NaN.
-            p = scores[scores_index]
-            p = p[cols_to_sample_from]
-
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", category=RuntimeWarning)
-                p = p / p.sum()
-                p[np.isnan(p)] = 0
-                if p.sum() == 0:
-                    p = None
-                n_nearest_features = min(n_nearest_features, len(cols_to_sample_from))
-                sampled_cols = self._rng.choice(
-                    a=cols_to_sample_from,
-                    size=n_nearest_features,
-                    replace=False,
-                    p=p,
-                )
+            p = scores[scores_index][cols_to_sample_from]
+            p = p / p.sum()
+            p[np.isnan(p)] = 0
+            if p.sum() == 0:
+                p = None
+            n_nearest_features = min(n_nearest_features, len(cols_to_sample_from))
+            sampled_cols = self._rng.choice(
+                a=cols_to_sample_from,
+                size=n_nearest_features,
+                replace=False,
+                p=p,
+            )
             return np.sort(sampled_cols)
         return cols_to_sample_from
 
