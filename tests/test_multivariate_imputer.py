@@ -186,14 +186,17 @@ def test_validate_input_errors():
 
 
 def test_get_sampled_cols_zero_scores(mocker):
-    mocker.patch("numpy.random.RandomState", return_value=mocker.Mock(choice=lambda a, size, replace, p: a[:size]))
+    mocker.patch(
+        "numpy.random.RandomState",
+        return_value=mocker.Mock(choice=lambda a, size, replace, p: a[:size]),
+    )
     imputer = MultivariateImputer()
     scores = np.zeros((1, 5))
     # with p=None, it should do a uniform choice
-    sampled_cols = imputer._get_sampled_cols(5, 3, scores, 0)
+    sampled_cols = imputer._get_sampled_cols(5, 0, 3, scores, 0)
     assert len(sampled_cols) == 3
     assert len(np.unique(sampled_cols)) == 3
-    assert np.array_equal(sampled_cols, np.array([0, 1, 2]))  # due to mock
+    assert np.array_equal(sampled_cols, np.array([1, 2, 3]))  # due to mock
 
 
 def test_imputer_no_nans_in_col_to_impute():
