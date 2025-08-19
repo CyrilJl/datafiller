@@ -1,6 +1,7 @@
 import numpy as np
 from datafiller._optimask import optimask
 
+
 def test_optimask_no_nans():
     iy = np.array([1], dtype=np.uint32)
     ix = np.array([1], dtype=np.uint32)
