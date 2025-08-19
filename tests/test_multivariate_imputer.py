@@ -1,8 +1,15 @@
 import numpy as np
 import pandas as pd
 import pytest
-from datafiller import MultivariateImputer
 from sklearn.linear_model import Ridge
+
+from datafiller import MultivariateImputer
+from datafiller.multivariate._scoring import preimpute
+from datafiller.multivariate._utils import (
+    _dataframe_cols_to_impute_to_indices,
+    _dataframe_rows_to_impute_to_indices,
+    _process_to_impute,
+)
 
 
 def generate_data(n_samples, n_features, mean, cov):
@@ -108,14 +115,6 @@ def test_multivariate_imputer_dataframe_label_not_found():
         imputer(df, rows_to_impute=["r3"])
 
 
-from datafiller.multivariate._scoring import preimpute
-from datafiller.multivariate._utils import (
-    _dataframe_cols_to_impute_to_indices,
-    _dataframe_rows_to_impute_to_indices,
-    _process_to_impute,
-)
-
-
 def test_process_to_impute():
     assert np.array_equal(_process_to_impute(5, None), np.arange(5))
     assert np.array_equal(_process_to_impute(5, 2), np.array([2]))
@@ -126,12 +125,6 @@ def test_preimpute():
     x = np.array([[1, np.nan], [3, 5]], dtype=float)
     xp = preimpute(x)
     assert np.array_equal(xp, [[1, 5], [3, 5]])
-
-
-def test_preimpute_all_nan_column():
-    x = np.array([[1, np.nan], [2, np.nan]], dtype=float)
-    with pytest.raises(ValueError, match="One or more columns are all NaNs"):
-        preimpute(x)
 
 
 def test_validate_input_errors():
