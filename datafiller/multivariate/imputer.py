@@ -126,9 +126,7 @@ class MultivariateImputer:
             An array of column indices to use for imputation.
         """
         cols_to_sample_from = np.arange(n_features)
-        cols_to_sample_from = cols_to_sample_from[
-            cols_to_sample_from != col_to_impute
-        ]
+        cols_to_sample_from = cols_to_sample_from[cols_to_sample_from != col_to_impute]
 
         if n_nearest_features is not None:
             # The scores are for all n_features, but we are sampling from n_features - 1
@@ -186,13 +184,9 @@ class MultivariateImputer:
         """
         m, n = x.shape
 
-        sampled_cols = self._get_sampled_cols(
-            n, col_to_impute, n_nearest_features, scores, scores_index
-        )
+        sampled_cols = self._get_sampled_cols(n, col_to_impute, n_nearest_features, scores, scores_index)
 
-        imputable_rows = _imputable_rows(
-            mask_nan=mask_nan, col=col_to_impute, mask_rows_to_impute=mask_rows_to_impute
-        )
+        imputable_rows = _imputable_rows(mask_nan=mask_nan, col=col_to_impute, mask_rows_to_impute=mask_rows_to_impute)
         if not len(imputable_rows):
             return
 
