@@ -98,8 +98,9 @@ class TimeSeriesImputer:
         Args:
             df: The input DataFrame with a `DatetimeIndex` and missing
                 values (NaNs). The index must have a defined frequency.
-            rows_to_impute: The indices of rows to impute.
-                If None, all rows are considered. Defaults to None.
+            rows_to_impute: The rows to impute. Can be an iterable of
+                integer indices, a pandas DatetimeIndex, or None. If None,
+                all rows are considered. Defaults to None.
             cols_to_impute: The indices or names of columns
                 to impute. If None, all columns are considered. Defaults to None.
             n_nearest_features: The number of features to use for
@@ -160,7 +161,12 @@ class TimeSeriesImputer:
             cols_to_impute_indices = np.array(indices)
 
         # Process rows_to_impute
-        if rows_to_impute is None:
+        if rows_to_impute is not None:
+            if isinstance(rows_to_impute, (pd.DatetimeIndex, pd.TimedeltaIndex, pd.PeriodIndex)):
+                rows_to_impute = df.index.get_indexer(rows_to_impute)
+            elif isinstance(rows_to_impute, int):
+                rows_to_impute = [rows_to_impute]
+        elif rows_to_impute is None:
             if before is not None or after is not None:
                 before_timestamp = pd.to_datetime(str(before)) if before is not None else None
                 after_timestamp = pd.to_datetime(str(after)) if after is not None else None
