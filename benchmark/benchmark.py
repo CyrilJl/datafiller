@@ -13,7 +13,8 @@ def main():
         verbose=True,
         interpolate_gaps_less_than=1,
     )
-    df_imputed = tsi(df=df_to_ipmute, n_nearest_features=50)
+    to_impute = df.sample(axis=1, n=15).columns.tolist()
+    df_imputed = tsi(df=df_to_ipmute, n_nearest_features=50, cols_to_impute=to_impute)
 
 
 if __name__ == "__main__":
