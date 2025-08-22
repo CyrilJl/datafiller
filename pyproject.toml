@@ -5,7 +5,8 @@ build-backend = "hatchling.build"
 [project]
 name = "datafiller"
 version = "0.1.1"
-description = "Data imputation"
+description = "A python package for easy data imputation"
+readme = "README.md"
 authors = [
   { name="Cyril Joly"},
 ]
@@ -29,3 +30,7 @@ test = [
 
 [tool.ruff]
 line-length = 120
+
+[project.urls]
+Homepage = "https://github.com/CyrilJl/datafiller"
+Documentation = "https://datafiller.readthedocs.io"
