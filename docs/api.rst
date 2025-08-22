@@ -22,6 +22,17 @@ Imputer Classes
       :undoc-members:
       :show-inheritance:
 
+Models
+******
+
+.. admonition:: FastRidge
+   :class: dropdown
+
+   .. autoclass:: datafiller.FastRidge
+      :members:
+      :undoc-members:
+      :show-inheritance:
+
 ***********************
 Low-Level Functions
 ***********************
