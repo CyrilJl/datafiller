@@ -6,6 +6,7 @@
 </picture>
 
 [![PyPI version](https://badge.fury.io/py/datafiller.svg)](https://badge.fury.io/py/datafiller)
+[![CI Pipeline](https://github.com/CyrilJl/datafiller/actions/workflows/ci-pipeline.yml/badge.svg)](https://github.com/CyrilJl/datafiller/actions/workflows/ci-pipeline.yml)
 [![codecov](https://codecov.io/github/CyrilJl/datafiller/graph/badge.svg?token=PXK2523PL9)](https://codecov.io/github/CyrilJl/datafiller)
 [![Documentation Status](https://readthedocs.org/projects/datafiller/badge/?version=latest)](https://datafiller.readthedocs.io/en/latest/?badge=latest)
 
