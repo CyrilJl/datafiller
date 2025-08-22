@@ -142,6 +142,7 @@ class TimeSeriesImputer:
             shifted = df.shift(lag)
             shifted.columns = [f"{col}_lag_{lag}" for col in original_cols]
             df_with_lags = pd.concat([df_with_lags, shifted], axis=1)
+        df_with_lags = df_with_lags.dropna(how="all", axis=1)
 
         # Process cols_to_impute
         if cols_to_impute is None:
