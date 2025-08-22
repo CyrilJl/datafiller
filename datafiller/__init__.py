@@ -1,8 +1,8 @@
 from importlib.metadata import version
 
-from .multivariate.imputer import MultivariateImputer
-from .timeseries.imputer import TimeSeriesImputer
+from .multivariate import MultivariateImputer, FastRidge
+from .timeseries import TimeSeriesImputer
 
-__all__ = ["MultivariateImputer", "TimeSeriesImputer"]
+__all__ = ["MultivariateImputer", "TimeSeriesImputer", "FastRidge"]
 
 __version__ = version("datafiller")
