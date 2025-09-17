@@ -9,14 +9,10 @@ class FastRidge:
     methods for use within the DataFiller.
     Args:
         alpha (float): The regularization strength. Defaults to 1.0.
-        fit_intercept (bool): Whether to calculate the intercept for this model.
-            If set to False, no intercept will be used in calculations.
-            Defaults to True.
     """
 
-    def __init__(self, alpha: float = 1.0, fit_intercept: bool = True):
+    def __init__(self, alpha: float = 1.0):
         self.alpha = alpha
-        self.fit_intercept = fit_intercept
         self.coef_ = None
         self.intercept_ = 0.0
 
@@ -28,20 +24,19 @@ class FastRidge:
         Returns:
             self: The fitted regressor.
         """
-        if self.fit_intercept:
-            X_mean = X.mean(axis=0)
-            y_mean = y.mean()
-            X = X - X_mean
-            y = y - y_mean
+        X = X.astype(np.float32)
+        y = y.astype(np.float32)
+
+        X_mean = X.mean(axis=0)
+        y_mean = y.mean()
+        X = X - X_mean
+        y = y - y_mean
 
         A = X.T @ X
         A[np.diag_indices_from(A)] += self.alpha
         self.coef_ = np.linalg.solve(A, X.T @ y)
 
-        if self.fit_intercept:
-            self.intercept_ = y_mean - (X_mean @ self.coef_)
-        else:
-            self.intercept_ = 0.0
+        self.intercept_ = y_mean - (X_mean @ self.coef_)
         return self
 
     def predict(self, X: np.ndarray) -> np.ndarray:
@@ -51,4 +46,5 @@ class FastRidge:
         Returns:
             np.ndarray: The predicted values.
         """
+        X = X.astype(np.float32)
         return X @ self.coef_ + self.intercept_

@@ -9,7 +9,7 @@ from sklearn.base import RegressorMixin
 from tqdm.auto import tqdm
 
 from .._optimask import optimask
-from .fast_ridge import FastRidge
+from ..estimators.ridge import FastRidge
 from ._numba_utils import (
     _imputable_rows,
     _index_to_mask,
