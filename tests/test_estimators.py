@@ -27,6 +27,20 @@ def test_fast_ridge_fit_predict(data):
     np.testing.assert_allclose(preds, sklearn_preds, rtol=1e-4)
 
 
+def test_fast_ridge_no_intercept(data):
+    X, y = data
+    ridge = FastRidge(alpha=1.0, fit_intercept=False)
+    ridge.fit(X, y)
+    preds = ridge.predict(X)
+    assert ridge.intercept_ == 0.0
+
+    # Compare with sklearn's Ridge
+    sklearn_ridge = Ridge(alpha=1.0, fit_intercept=False)
+    sklearn_ridge.fit(X, y)
+    sklearn_preds = sklearn_ridge.predict(X)
+    np.testing.assert_allclose(preds, sklearn_preds, rtol=1e-4)
+
+
 def test_elm_fit_predict(data):
     X, y = data
     elm = ExtremeLearningMachine(n_features=10, random_state=0)
