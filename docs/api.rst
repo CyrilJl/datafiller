@@ -33,6 +33,14 @@ Models
       :undoc-members:
       :show-inheritance:
 
+.. admonition:: ExtremeLearningMachine
+   :class: dropdown
+
+   .. autoclass:: datafiller.ExtremeLearningMachine
+      :members:
+      :undoc-members:
+      :show-inheritance:
+
 ***********************
 Low-Level Functions
 ***********************
