@@ -54,3 +54,23 @@ def test_timeseries_imputer_interpolate(nan_df):
 def test_timeseries_imputer_invalid_lags():
     with pytest.raises(ValueError):
         TimeSeriesImputer(lags=[1, 0])
+
+
+def test_timeseries_imputer_n_nearest_features_tracking(nan_df):
+    imputer = TimeSeriesImputer(rng=0, lags=[1, -1])
+    n_nearest_features = 3
+    imputer(nan_df, n_nearest_features=n_nearest_features)
+
+    assert imputer.imputation_features_ is not None
+
+    cols_with_nans = nan_df.columns[nan_df.isnull().any()].tolist()
+    assert set(imputer.imputation_features_.keys()) == set(cols_with_nans)
+
+    for col, features in imputer.imputation_features_.items():
+        assert isinstance(col, str)
+        assert isinstance(features, list)
+        assert all(isinstance(f, str) for f in features)
+        assert len(features) <= n_nearest_features
+        assert col not in features
+        # Check that lagged features are present
+        assert any("_lag_" in f for f in features)

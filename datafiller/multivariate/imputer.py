@@ -62,6 +62,13 @@ class MultivariateImputer:
             `(n_cols_to_impute, n_features)`.
             Defaults to 'default'.
 
+    Attributes:
+        imputation_features_ (dict or None): A dictionary mapping each imputed
+            column to the features used to impute it. This attribute is only
+            populated when `n_nearest_features` is not None. If the input is a
+            pandas DataFrame, the keys and values will be column names. If the
+            input is a NumPy array, they will be integer indices.
+
     Examples:
         .. code-block:: python
 
@@ -103,6 +110,7 @@ class MultivariateImputer:
             self.scoring = scoring
         else:
             raise ValueError("`scoring` must be 'default' or a callable.")
+        self.imputation_features_ = None
 
     @np.errstate(all="ignore")
     def _get_sampled_cols(
@@ -181,11 +189,14 @@ class MultivariateImputer:
         """
         m, n = x.shape
 
-        sampled_cols = self._get_sampled_cols(n, col_to_impute, n_nearest_features, scores, scores_index)
-
         imputable_rows = _imputable_rows(mask_nan=mask_nan, col=col_to_impute, mask_rows_to_impute=mask_rows_to_impute)
         if not len(imputable_rows):
             return
+
+        sampled_cols = self._get_sampled_cols(n, col_to_impute, n_nearest_features, scores, scores_index)
+
+        if self.imputation_features_ is not None:
+            self.imputation_features_[col_to_impute] = sampled_cols
 
         trainable_rows = _trainable_rows(mask_nan=mask_nan, col=col_to_impute)
         if not len(trainable_rows):
@@ -283,14 +294,22 @@ class MultivariateImputer:
                 scores = scoring(x, cols_to_impute)
             else:
                 scores = self.scoring(x, cols_to_impute)
+            self.imputation_features_ = {}
         else:
             scores = None
+            self.imputation_features_ = None
 
         x_imputed = x.copy()
         mask_nan, iy, ix = nan_positions(x)
 
         for i, col in enumerate(tqdm(cols_to_impute, leave=False, disable=(not self.verbose))):
             self._impute_col(x, x_imputed, col, mask_nan, mask_rows_to_impute, iy, ix, n_nearest_features, scores, i)
+
+        if is_df and self.imputation_features_ is not None:
+            self.imputation_features_ = {
+                original_columns[col]: original_columns[features].tolist()
+                for col, features in self.imputation_features_.items()
+            }
 
         if is_df:
             return pd.DataFrame(x_imputed, index=original_index, columns=original_columns)

@@ -40,6 +40,13 @@ class TimeSeriesImputer:
             gaps to interpolate linearly. If None, no linear interpolation is
             performed. Defaults to None.
 
+    Attributes:
+        imputation_features_ (dict or None): A dictionary mapping each imputed
+            column to the features used to impute it. This attribute is only
+            populated when `n_nearest_features` is not None. The keys and
+            values are the column names, which will include the lagged/lead
+            features created during the imputation process.
+
     .. code-block:: python
 
         import pandas as pd
@@ -83,6 +90,7 @@ class TimeSeriesImputer:
             rng=rng,
             scoring=scoring,
         )
+        self.imputation_features_ = None
 
     def __call__(
         self,
@@ -186,6 +194,13 @@ class TimeSeriesImputer:
             cols_to_impute=cols_to_impute_indices,
             n_nearest_features=n_nearest_features,
         )
+        self.imputation_features_ = self.multivariate_imputer.imputation_features_
+
+        if self.imputation_features_ is not None:
+            self.imputation_features_ = {
+                df_with_lags.columns[col]: df_with_lags.columns[features].tolist()
+                for col, features in self.imputation_features_.items()
+            }
 
         # Return a DataFrame with the same columns as the original
         imputed_df = pd.DataFrame(imputed_data, index=df.index, columns=df_with_lags.columns)
