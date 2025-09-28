@@ -46,3 +46,29 @@ def test_multivariate_imputer_min_samples_train(nan_array):
     imputed_array = imputer(nan_array)
     # With a high min_samples_train, no imputation should happen
     assert np.isnan(imputed_array).sum() == np.isnan(nan_array).sum()
+
+
+@pytest.mark.parametrize("use_df", [False, True])
+def test_multivariate_imputer_n_nearest_features_tracking(nan_array, use_df):
+    if use_df:
+        x = pd.DataFrame(nan_array, columns=[f"col_{i}" for i in range(nan_array.shape[1])])
+        cols_with_nans = x.columns[x.isnull().any()].tolist()
+    else:
+        x = nan_array
+        cols_with_nans = np.where(np.isnan(x).any(axis=0))[0]
+
+    imputer = MultivariateImputer(rng=0)
+    n_nearest_features = 2
+    imputer(x, n_nearest_features=n_nearest_features)
+
+    assert imputer.imputation_features_ is not None
+    assert set(imputer.imputation_features_.keys()) == set(cols_with_nans)
+
+    for col, features in imputer.imputation_features_.items():
+        if use_df:
+            assert isinstance(features, list)
+            assert all(isinstance(f, str) for f in features)
+        else:
+            assert isinstance(features, np.ndarray)
+        assert len(features) <= n_nearest_features
+        assert col not in features
