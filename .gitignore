@@ -208,3 +208,7 @@ __marimo__/
 
 # VSCode
 .vscode
+
+# Benchmark results
+imputation_benchmark_results.csv
+imputation_benchmark_comparison.png
