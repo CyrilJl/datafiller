@@ -1,4 +1,3 @@
-
 import time
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,6 +9,7 @@ from sklearn.impute import IterativeImputer
 from sklearn.linear_model import BayesianRidge
 
 from datafiller import MultivariateImputer
+
 
 def run_benchmark():
     """
@@ -35,7 +35,7 @@ def run_benchmark():
         (
             "BayesianRidge",
             BayesianRidge(),
-            {'tol': 1e-3}  # Tolerance for IterativeImputer
+            {"tol": 1e-3},  # Tolerance for IterativeImputer
         ),
         (
             "RandomForest",
@@ -47,7 +47,7 @@ def run_benchmark():
                 n_jobs=2,
                 random_state=0,
             ),
-            {'tol': 1e-1}  # Tolerance for IterativeImputer
+            {"tol": 1e-1},  # Tolerance for IterativeImputer
         ),
     ]
 
@@ -58,8 +58,14 @@ def run_benchmark():
         print(f"--- Benchmarking with {estimator_name} ---")
 
         imputers_to_compare = {
-            f'MultivariateImputer ({estimator_name})': MultivariateImputer(estimator=estimator_instance.set_params(random_state=0) if "random_state" in estimator_instance.get_params() else estimator_instance),
-            f'IterativeImputer ({estimator_name})': IterativeImputer(estimator=estimator_instance, max_iter=40, **iterative_imputer_params, random_state=0)
+            f"MultivariateImputer ({estimator_name})": MultivariateImputer(
+                estimator=estimator_instance.set_params(random_state=0)
+                if "random_state" in estimator_instance.get_params()
+                else estimator_instance
+            ),
+            f"IterativeImputer ({estimator_name})": IterativeImputer(
+                estimator=estimator_instance, max_iter=40, **iterative_imputer_params, random_state=0
+            ),
         }
 
         for imputer_name, imputer in imputers_to_compare.items():
@@ -71,13 +77,11 @@ def run_benchmark():
             end_time = time.time()
 
             # Calculate MSE on the originally missing values
-            mse = np.mean((X_imputed[missing_samples, missing_features] - X_full[missing_samples, missing_features])**2)
+            mse = np.mean(
+                (X_imputed[missing_samples, missing_features] - X_full[missing_samples, missing_features]) ** 2
+            )
 
-            results.append({
-                'Imputer': imputer_name,
-                'Time (s)': end_time - start_time,
-                'MSE': mse
-            })
+            results.append({"Imputer": imputer_name, "Time (s)": end_time - start_time, "MSE": mse})
 
     # --- Process and display results ---
     results_df = pd.DataFrame(results)
@@ -85,25 +89,44 @@ def run_benchmark():
     print(results_df)
 
     # Save results to a CSV file
-    results_df.to_csv('imputation_benchmark_results.csv', index=False)
+    results_df.to_csv("imputation_benchmark_results.csv", index=False)
 
     # Plot the results
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
-    fig.suptitle('Imputer Performance Comparison', fontsize=16)
+    fig.suptitle("Imputer Performance Comparison", fontsize=16)
 
     # Time Comparison Plot
-    results_df.plot(kind='barh', x='Imputer', y='Time (s)', ax=ax1, title='Execution Time', legend=False, color=['#1f77b4', '#ff7f0e'] * len(estimators))
-    ax1.set_xlabel('Time (s) (lower is better)')
-    ax1.set_ylabel('')
+    results_df.plot(
+        kind="barh",
+        x="Imputer",
+        y="Time (s)",
+        ax=ax1,
+        title="Execution Time",
+        legend=False,
+        color=["#1f77b4", "#ff7f0e"] * len(estimators),
+    )
+    ax1.set_xlabel("Time (s) (lower is better)")
+    ax1.set_ylabel("")
 
     # MSE Comparison Plot
-    results_df.plot(kind='barh', x='Imputer', y='MSE', ax=ax2, title='Imputation Error (MSE)', legend=False, color=['#1f77b4', '#ff7f0e'] * len(estimators))
-    ax2.set_xlabel('Mean Squared Error (lower is better)')
-    ax2.set_ylabel('')
+    results_df.plot(
+        kind="barh",
+        x="Imputer",
+        y="MSE",
+        ax=ax2,
+        title="Imputation Error (MSE)",
+        legend=False,
+        color=["#1f77b4", "#ff7f0e"] * len(estimators),
+    )
+    ax2.set_xlabel("Mean Squared Error (lower is better)")
+    ax2.set_ylabel("")
 
     plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plt.savefig('imputation_benchmark_comparison.png')
-    print("\nBenchmark complete. Results saved to 'imputation_benchmark_results.csv' and 'imputation_benchmark_comparison.png'.")
+    plt.savefig("imputation_benchmark_comparison.png")
+    print(
+        "\nBenchmark complete. Results saved to 'imputation_benchmark_results.csv' and 'imputation_benchmark_comparison.png'."
+    )
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     run_benchmark()
