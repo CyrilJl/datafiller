@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from datafiller.multivariate import MultivariateImputer
+from datafiller.multivariate.elm_imputer import ELMImputer
 
 
 @pytest.fixture
@@ -11,6 +12,12 @@ def nan_array():
 
 def test_multivariate_imputer_less_nans(nan_array):
     imputer = MultivariateImputer()
+    imputed_array = imputer(nan_array)
+    assert np.isnan(imputed_array).sum() < np.isnan(nan_array).sum()
+
+
+def test_elm_imputer_less_nans(nan_array):
+    imputer = ELMImputer()
     imputed_array = imputer(nan_array)
     assert np.isnan(imputed_array).sum() < np.isnan(nan_array).sum()
 
