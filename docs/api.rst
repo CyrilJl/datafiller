@@ -22,6 +22,14 @@ Imputer Classes
       :undoc-members:
       :show-inheritance:
 
+.. admonition:: ELMImputer
+   :class: dropdown
+
+   .. autoclass:: datafiller.ELMImputer
+      :members: __call__
+      :undoc-members:
+      :show-inheritance:
+
 Models
 ******
 
