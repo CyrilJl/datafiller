@@ -10,7 +10,8 @@ from sklearn.impute import IterativeImputer
 from sklearn.linear_model import BayesianRidge
 from sklearn.preprocessing import StandardScaler
 
-from datafiller import MultivariateImputer
+from datafiller import ELMImputer, MultivariateImputer
+from datafiller.estimators.elm import ExtremeLearningMachine
 
 
 def run_benchmark():
@@ -47,6 +48,13 @@ def run_benchmark():
         missing_features = rng.choice(n_features, n_samples, replace=True)
         X_missing[missing_samples, missing_features] = np.nan
 
+        # Warm-up for MultivariateImputer to account for Numba's JIT compilation
+        print("Warming up MultivariateImputer (Numba JIT compilation)...")
+        warmup_imputer = MultivariateImputer(estimator=BayesianRidge())
+        # Use a small subset of data for a quick warm-up
+        _ = warmup_imputer(X_missing[:5].copy())
+        print("Warm-up complete.")
+
         # Define the list of estimators to be used for comparison
         estimators = [
             (
@@ -71,6 +79,7 @@ def run_benchmark():
                 GradientBoostingRegressor(n_estimators=10, random_state=0),
                 {"tol": 1e-1},  # Tolerance for IterativeImputer
             ),
+            ("ELM", ExtremeLearningMachine(random_state=0), {"tol": 1e-1}),
         ]
 
         # Iterate through each estimator and compare the two imputers
@@ -91,20 +100,16 @@ def run_benchmark():
                 ),
             }
 
-            # Warm-up for MultivariateImputer to account for Numba's JIT compilation
-            print("Warming up MultivariateImputer (Numba JIT compilation)...")
-            warmup_imputer = MultivariateImputer(
-                estimator=estimator_instance.set_params(random_state=0)
-                if "random_state" in estimator_instance.get_params()
-                else estimator_instance
-            )
-            # Use a small subset of data for a quick warm-up
-            _ = warmup_imputer(X_missing[:5].copy())
-            print("Warm-up complete.")
+            if isinstance(estimator_instance, ExtremeLearningMachine):
+                imputers_to_compare[f"ELMImputer ({estimator_name})"] = ELMImputer(
+                    n_features=estimator_instance.n_features,
+                    alpha=estimator_instance.alpha,
+                    random_state=estimator_instance.random_state,
+                )
 
             for imputer_name, imputer in imputers_to_compare.items():
                 start_time = time.time()
-                if isinstance(imputer, MultivariateImputer):
+                if isinstance(imputer, (MultivariateImputer, ELMImputer)):
                     X_imputed = imputer(X_missing)
                 else:
                     X_imputed = imputer.fit_transform(X_missing)
@@ -148,11 +153,11 @@ def run_benchmark():
     for dataset_name, group in results_df.groupby("Dataset"):
         metrics_to_plot = ["Time (s)", "RMSE", "MAE", "Bias", "MAPE (%)"]
         n_metrics = len(metrics_to_plot)
-        n_estimators = len(group["Imputer"].unique()) // 2
-        fig, axes = plt.subplots(1, n_metrics, figsize=(5 * n_metrics, 2 + n_estimators * 0.8), sharey=True)
+        n_imputers = len(group["Imputer"].unique())
+        fig, axes = plt.subplots(1, n_metrics, figsize=(5 * n_metrics, 2 + n_imputers * 0.4), sharey=True)
         fig.suptitle(f"Imputer Performance Comparison on {dataset_name}", fontsize=16)
 
-        colors = ["#1f77b4", "#ff7f0e"] * n_estimators
+        colors = ["#1f77b4", "#ff7f0e", "#2ca02c"] * (n_imputers // 3 + 1)
 
         for i, metric in enumerate(metrics_to_plot):
             ax = axes[i]
