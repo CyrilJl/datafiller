@@ -80,3 +80,33 @@ class ExtremeLearningMachine:
         """
         X_projected = _random_projection_relu(X, self.projection_, self.bias_)
         return self.ridge_.predict(X_projected)
+
+    def get_params(self, deep: bool = True) -> dict:
+        """
+        Get parameters for this estimator.
+        Args:
+            deep (bool): If True, will return the parameters for this estimator and
+                contained subobjects that are estimators.
+        Returns:
+            dict: Parameter names mapped to their values.
+        """
+        return {
+            "n_features": self.n_features,
+            "alpha": self.alpha,
+            "random_state": self.random_state,
+        }
+
+    def set_params(self, **params) -> "ExtremeLearningMachine":
+        """
+        Set the parameters of this estimator.
+        Args:
+            **params: Estimator parameters.
+        Returns:
+            self: Estimator instance.
+        """
+        for param, value in params.items():
+            setattr(self, param, value)
+        # Re-initialize FastRidge if alpha is changed
+        if "alpha" in params:
+            self.ridge_ = FastRidge(alpha=self.alpha)
+        return self
