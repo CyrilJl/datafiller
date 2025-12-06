@@ -8,7 +8,6 @@ from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.experimental import enable_iterative_imputer  # noqa
 from sklearn.impute import IterativeImputer
 from sklearn.linear_model import BayesianRidge
-from sklearn.neighbors import KNeighborsRegressor
 from sklearn.preprocessing import StandardScaler
 
 from datafiller import MultivariateImputer
@@ -123,9 +122,7 @@ def run_benchmark():
 
                 # Calculate MAPE, avoiding division by zero
                 non_zero_mask = y_true != 0
-                mape = (
-                    np.mean(np.abs(errors[non_zero_mask] / y_true[non_zero_mask])) * 100
-                )
+                mape = np.mean(np.abs(errors[non_zero_mask] / y_true[non_zero_mask])) * 100
 
                 results.append(
                     {
@@ -152,9 +149,7 @@ def run_benchmark():
         metrics_to_plot = ["Time (s)", "RMSE", "MAE", "Bias", "MAPE (%)"]
         n_metrics = len(metrics_to_plot)
         n_estimators = len(group["Imputer"].unique()) // 2
-        fig, axes = plt.subplots(
-            1, n_metrics, figsize=(5 * n_metrics, 2 + n_estimators * 0.8), sharey=True
-        )
+        fig, axes = plt.subplots(1, n_metrics, figsize=(5 * n_metrics, 2 + n_estimators * 0.8), sharey=True)
         fig.suptitle(f"Imputer Performance Comparison on {dataset_name}", fontsize=16)
 
         colors = ["#1f77b4", "#ff7f0e"] * n_estimators
@@ -171,9 +166,7 @@ def run_benchmark():
                 color=colors,
             )
             lower_is_better = metric not in ["Bias"]
-            xlabel = (
-                f"{metric} ({'lower is better' if lower_is_better else 'closer to 0 is better'})"
-            )
+            xlabel = f"{metric} ({'lower is better' if lower_is_better else 'closer to 0 is better'})"
             ax.set_xlabel(xlabel)
             ax.set_ylabel("")
 
@@ -181,9 +174,7 @@ def run_benchmark():
         filename = f"benchmark/imputation_benchmark_{dataset_name.replace(' ', '_')}.png"
         plt.savefig(filename)
         print(f"Plot for {dataset_name} saved to '{filename}'")
-    print(
-        "\nBenchmark complete. Results saved to 'benchmark/imputation_benchmark_results.csv'."
-    )
+    print("\nBenchmark complete. Results saved to 'benchmark/imputation_benchmark_results.csv'.")
 
 
 if __name__ == "__main__":
