@@ -154,9 +154,7 @@ def run_benchmark():
         metrics_to_plot = ["Time (s)", "RMSE", "MAE", "Bias", "MAPE (%)"]
         n_metrics = len(metrics_to_plot)
         n_imputers = len(group["Imputer"].unique())
-        fig, axes = plt.subplots(
-            1, n_metrics, figsize=(5 * n_metrics, 2 + n_imputers * 0.4), sharey=True
-        )
+        fig, axes = plt.subplots(1, n_metrics, figsize=(5 * n_metrics, 2 + n_imputers * 0.4), sharey=True)
         fig.suptitle(f"Imputer Performance Comparison on {dataset_name}", fontsize=16)
 
         colors = ["#1f77b4", "#ff7f0e", "#2ca02c"] * (n_imputers // 3 + 1)
