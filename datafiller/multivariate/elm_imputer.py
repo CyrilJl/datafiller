@@ -5,6 +5,7 @@ from typing import Iterable, Union
 from ..estimators.elm import _random_projection_relu
 from .imputer import MultivariateImputer
 from ..estimators.ridge import FastRidge
+from ._utils import _dataframe_cols_to_impute_to_indices, _dataframe_rows_to_impute_to_indices
 
 
 class ELMImputer(MultivariateImputer):
@@ -66,7 +67,12 @@ class ELMImputer(MultivariateImputer):
         is_df = isinstance(x, pd.DataFrame)
         if is_df:
             original_columns = x.columns
+            original_index = x.index
+            rows_to_impute = _dataframe_rows_to_impute_to_indices(rows_to_impute, original_index)
+            cols_to_impute = _dataframe_cols_to_impute_to_indices(cols_to_impute, original_columns)
             x = x.to_numpy(dtype=np.float32)
+        elif cols_to_impute is None:
+            cols_to_impute = np.arange(x.shape[1])
 
         if self.projection_ is None:
             self._initialize_projection(x.shape[1])
@@ -77,7 +83,7 @@ class ELMImputer(MultivariateImputer):
         imputed_concatenated = super().__call__(
             x=x_concatenated,
             rows_to_impute=rows_to_impute,
-            cols_to_impute=list(range(x.shape[1])),
+            cols_to_impute=cols_to_impute,
             n_nearest_features=n_nearest_features,
         )
 
