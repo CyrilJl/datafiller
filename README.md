@@ -22,6 +22,7 @@ DataFiller is a pragmatic imputation tool: it is unlikely to match the absolute 
 ## Key Features
 
 - **Model-Based Imputation**: Uses machine learning models (like linear regression) to predict and fill missing values.
+- **Mixed Data Support**: Automatically one-hot encodes categorical, string, and boolean columns and imputes them with a classifier while preserving the original schema.
 - **Time Series Support**: A dedicated ``TimeSeriesImputer`` that automatically creates lagged and lead features for imputation.
 - **Efficient**: Leverages Numba for performance-critical sections.
 - **Smart Feature Selection**: Finds the optimal subset of data to use for training imputation models.
@@ -93,6 +94,6 @@ print(df_imputed)
 
 ## How It Works
 
-DataFiller uses a model-based imputation strategy. For each column containing missing values, it trains a regression model using the other columns as features. The rows used for training are carefully selected to be the largest, most complete rectangular subset of the data, which is found using the ``optimask`` algorithm. This ensures that the training data is of the highest possible quality, leading to more accurate imputations.
+DataFiller uses a model-based imputation strategy. For each column containing missing values, it trains a regression model using the other columns as features. When a column is categorical, boolean, or string, it is one-hot encoded for feature construction and imputed with a classifier before being mapped back to the original labels. The rows used for training are carefully selected to be the largest, most complete rectangular subset of the data, which is found using the ``optimask`` algorithm. This ensures that the training data is of the highest possible quality, leading to more accurate imputations.
 
 For more details, see the [documentation](https://datafiller.readthedocs.io/).

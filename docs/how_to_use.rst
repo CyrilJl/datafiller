@@ -3,10 +3,16 @@ How to Use
 
 This guide provides detailed examples on how to use the ``MultivariateImputer`` and ``TimeSeriesImputer``.
 
+Why DataFiller
+**************
+
+DataFiller targets a pragmatic middle ground for imputation. It does not aim to match the absolute performance of large deep learning models on complex masking patterns, but it is much simpler to fit, easy to adapt, and flexible to integrate into existing workflows. It is also significantly faster than scikit-learn's ``IterativeImputer``, which makes it well-suited for fast iteration and production use.
+
 Multivariate Imputer
 ********************
 
 The ``MultivariateImputer`` is the core of the library, designed to impute missing values in a 2D NumPy array or pandas DataFrame.
+It automatically handles mixed numerical, boolean, and categorical/string columns by one-hot encoding non-numerical features internally and returning the original schema.
 
 Basic Example
 =============
@@ -34,6 +40,30 @@ Here is a simple example of how to use the ``MultivariateImputer``.
 
     print(X_imputed)
 
+Categorical and Boolean Example
+===============================
+
+``MultivariateImputer`` also handles categorical, string, and boolean columns by one-hot encoding them internally and imputing missing labels with a classifier.
+
+.. code-block:: python
+
+    import numpy as np
+    import pandas as pd
+    from datafiller import MultivariateImputer
+
+    df = pd.DataFrame(
+        {
+            "city": ["Paris", "Paris", None, "Lyon", "London"],
+            "is_active": pd.Series([True, None, False, True, None], dtype="boolean"),
+            "value": [1.0, np.nan, 3.0, 4.0, 5.0],
+        }
+    )
+
+    imputer = MultivariateImputer()
+    df_imputed = imputer(df)
+
+    print(df_imputed)
+
 Parameters
 ----------
 
@@ -41,7 +71,8 @@ The ``MultivariateImputer`` has several parameters that can be tuned to control 
 
 **Initialization Parameters**
 
-*   **estimator**: The regressor model to use for imputation. It should be a lightweight model, as it is fitted many times. By default, a custom Ridge implementation is used.
+*   **regressor**: The regressor model to use for numerical imputation. It should be a lightweight model, as it is fitted many times. By default, a custom Ridge implementation is used. The deprecated alias ``estimator`` is still accepted.
+*   **classifier**: The classifier used for categorical, string, or boolean targets. Defaults to ``sklearn.linear_model.LogisticRegression``.
 *   **verbose**: Controls the verbosity of the imputer. If ``True``, it will print progress bars. Defaults to ``False``.
 *   **min_samples_train**: The minimum number of samples required to train a model for a given column. If, after the imputation, some values are still missing, it is likely that no training set with at least `min_samples_train` samples could be found. Defaults to ``None``, which means that a model will be trained if at least one sample is available.
 *   **rng**: A seed for the random number generator, which is used for reproducible feature sampling. Defaults to ``None``.
@@ -76,7 +107,7 @@ Here is a more advanced example that shows how to use some of the parameters.
 
     # Initialize the imputer with a RandomForestRegressor
     imputer = MultivariateImputer(
-        estimator=RandomForestRegressor(n_estimators=10, random_state=0),
+        regressor=RandomForestRegressor(n_estimators=10, random_state=0),
         verbose=1,
         rng=0
     )

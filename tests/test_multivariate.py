@@ -7,7 +7,27 @@ from datafiller.multivariate.elm_imputer import ELMImputer
 
 @pytest.fixture
 def nan_array():
-    return np.array([[1, 2, 3, np.nan], [4, np.nan, 6, 7], [7, 8, 9, 10], [np.nan, 12, 13, 14]])
+    rng = np.random.default_rng(0)
+    n_samples = 9
+    n_features = 10
+    mean = np.linspace(0.0, 1.0, n_features)
+    cov = np.fromfunction(lambda i, j: 0.5 ** np.abs(i - j), (n_features, n_features))
+    x = rng.multivariate_normal(mean, cov, size=n_samples)
+    n_nans = int(x.size * 0.10)
+    nan_indices = rng.choice(x.size, size=n_nans, replace=False)
+    x.flat[nan_indices] = np.nan
+    return x
+
+
+@pytest.fixture
+def nan_df_with_categories(nan_array):
+    rng = np.random.default_rng(0)
+    categories = rng.choice(np.array(["a", "b", "c", "d"]), size=nan_array.shape[0]).astype(object)
+    categories[0] = None
+    categories[3] = np.nan
+    df = pd.DataFrame(nan_array, columns=[f"num_{i}" for i in range(nan_array.shape[1])])
+    df.insert(0, "category", categories)
+    return df
 
 
 def test_multivariate_imputer_less_nans(nan_array):
@@ -28,6 +48,14 @@ def test_multivariate_imputer_dataframe_support(nan_array):
     imputed_df = imputer(df)
     assert isinstance(imputed_df, pd.DataFrame)
     assert np.isnan(imputed_df.values).sum() < np.isnan(df.values).sum()
+
+
+def test_multivariate_imputer_categorical_dataframe_support(nan_df_with_categories):
+    imputer = MultivariateImputer(rng=0)
+    imputed_df = imputer(nan_df_with_categories)
+    assert list(imputed_df.columns) == list(nan_df_with_categories.columns)
+    assert imputed_df["category"].isna().sum() < nan_df_with_categories["category"].isna().sum()
+    assert set(imputed_df["category"].dropna().unique()).issubset({"a", "b", "c", "d"})
 
 
 def test_multivariate_imputer_cols_to_impute(nan_array):
@@ -53,6 +81,20 @@ def test_multivariate_imputer_min_samples_train(nan_array):
     imputed_array = imputer(nan_array)
     # With a high min_samples_train, no imputation should happen
     assert np.isnan(imputed_array).sum() == np.isnan(nan_array).sum()
+
+
+def test_multivariate_imputer_boolean_support():
+    df = pd.DataFrame(
+        {
+            "flag": pd.Series([True, False, None, True, None], dtype="boolean"),
+            "value": [1.0, 2.0, 3.0, np.nan, 5.0],
+        }
+    )
+    imputer = MultivariateImputer(rng=0)
+    imputed_df = imputer(df)
+    assert imputed_df["flag"].isna().sum() < df["flag"].isna().sum()
+    assert imputed_df["flag"].dtype == "boolean"
+    assert set(imputed_df.columns) == {"flag", "value"}
 
 
 @pytest.mark.parametrize("use_df", [False, True])
