@@ -15,6 +15,10 @@
 
 **DataFiller** is a Python library for imputing missing values in datasets. It provides a flexible and powerful way to handle missing data in both numerical arrays and time series data.
 
+## Why DataFiller
+
+DataFiller is a pragmatic imputation tool: it is unlikely to match the absolute performance of large deep learning approaches on complex masking patterns, but it is much simpler to fit, easier to adapt, and more flexible to plug into existing workflows. It is also significantly faster than scikit-learn's ``IterativeImputer``, making it a good choice when you need strong results with tight iteration cycles.
+
 ## Key Features
 
 - **Model-Based Imputation**: Uses machine learning models (like linear regression) to predict and fill missing values.
