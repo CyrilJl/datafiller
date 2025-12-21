@@ -3,7 +3,7 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.datasets import fetch_california_housing, load_diabetes
+from sklearn.datasets import fetch_california_housing, fetch_covtype, load_diabetes
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.experimental import enable_iterative_imputer  # noqa
 from sklearn.impute import IterativeImputer
@@ -22,6 +22,7 @@ def run_benchmark():
     datasets = [
         ("California Housing", fetch_california_housing),
         ("Diabetes", load_diabetes),
+        ("Covertype", fetch_covtype),
     ]
 
     results = []
@@ -30,10 +31,6 @@ def run_benchmark():
         print(f"\n===== Benchmarking on {dataset_name} dataset =====")
         # Load the dataset
         X_full, _ = fetch_func(return_X_y=True)
-
-        # Use a subset of the data for a faster benchmark run
-        if "Housing" in dataset_name:
-            X_full = X_full[::10]
 
         # Scale data for better performance with some estimators
         scaler = StandardScaler()
@@ -44,9 +41,10 @@ def run_benchmark():
         # Introduce missing values consistently for each dataset
         rng = np.random.RandomState(0)
         X_missing = X_full.copy()
-        missing_samples = np.arange(n_samples)
-        missing_features = rng.choice(n_features, n_samples, replace=True)
-        X_missing[missing_samples, missing_features] = np.nan
+        missing_ratio = 0.10
+        missing_mask = rng.rand(n_samples, n_features) < missing_ratio
+        X_missing[missing_mask] = np.nan
+        missing_samples, missing_features = np.where(missing_mask)
 
         # Warm-up for MultivariateImputer to account for Numba's JIT compilation
         print("Warming up MultivariateImputer (Numba JIT compilation)...")
