@@ -4,7 +4,7 @@ from typing import Iterable, Union
 
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_bool_dtype, is_categorical_dtype, is_object_dtype, is_string_dtype
+from pandas.api.types import is_bool_dtype, is_object_dtype, is_string_dtype
 from sklearn.base import ClassifierMixin, RegressorMixin
 from sklearn.linear_model import LogisticRegression
 from tqdm.auto import tqdm
@@ -14,13 +14,13 @@ from ..estimators.ridge import FastRidge
 from ._numba_utils import (
     _imputable_rows,
     _index_to_mask,
+    _mask_index_to_impute,
     _subset,
     _subset_one_column,
     _trainable_rows,
     nan_positions,
     nan_positions_subset,
     unique2d,
-    _mask_index_to_impute,
 )
 from ._scoring import scoring
 from ._utils import (
@@ -119,7 +119,7 @@ class MultivariateImputer:
         if estimator is not None and regressor is not None:
             raise ValueError("Provide only one of `estimator` or `regressor`.")
         self.regressor = regressor or estimator or FastRidge()
-        self.classifier = classifier or LogisticRegression()
+        self.classifier = classifier or LogisticRegression(max_iter=10000)
         self.verbose = int(verbose)
         if min_samples_train is None:
             self.min_samples_train = 1
@@ -191,7 +191,7 @@ class MultivariateImputer:
             series = df[col]
             is_categorical = any(
                 [
-                    is_categorical_dtype(series.dtype),
+                    isinstance(series.dtype, pd.CategoricalDtype),
                     is_object_dtype(series.dtype),
                     is_string_dtype(series.dtype),
                     is_bool_dtype(series.dtype),
@@ -204,7 +204,7 @@ class MultivariateImputer:
             encoded_feature_names.append(col)
 
             if is_categorical:
-                if is_categorical_dtype(series.dtype):
+                if isinstance(series.dtype, pd.CategoricalDtype):
                     categories = series.cat.categories.tolist()
                 else:
                     categories = pd.Categorical(series.dropna()).categories.tolist()
@@ -260,7 +260,7 @@ class MultivariateImputer:
                 dtype = original_dtypes[col]
                 if is_bool_dtype(dtype):
                     series = pd.Series(decoded, index=original_index, dtype="boolean")
-                elif is_categorical_dtype(dtype):
+                elif isinstance(dtype, pd.CategoricalDtype):
                     dtype_categories = getattr(dtype, "categories", None)
                     series = pd.Series(
                         pd.Categorical(

@@ -10,7 +10,7 @@ from sklearn.impute import IterativeImputer
 from sklearn.linear_model import BayesianRidge
 from sklearn.preprocessing import StandardScaler
 
-from datafiller import ELMImputer, MultivariateImputer
+from datafiller import MultivariateImputer
 from datafiller.estimators.elm import ExtremeLearningMachine
 
 
@@ -98,16 +98,9 @@ def run_benchmark():
                 ),
             }
 
-            if isinstance(estimator_instance, ExtremeLearningMachine):
-                imputers_to_compare[f"ELMImputer ({estimator_name})"] = ELMImputer(
-                    n_features=estimator_instance.n_features,
-                    alpha=estimator_instance.alpha,
-                    random_state=estimator_instance.random_state,
-                )
-
             for imputer_name, imputer in imputers_to_compare.items():
                 start_time = time.time()
-                if isinstance(imputer, (MultivariateImputer, ELMImputer)):
+                if isinstance(imputer, MultivariateImputer):
                     X_imputed = imputer(X_missing)
                 else:
                     X_imputed = imputer.fit_transform(X_missing)

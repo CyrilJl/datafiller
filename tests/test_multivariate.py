@@ -1,8 +1,9 @@
 import numpy as np
 import pandas as pd
 import pytest
+
+from datafiller.datasets import load_titanic
 from datafiller.multivariate import MultivariateImputer
-from datafiller.multivariate.elm_imputer import ELMImputer
 
 
 @pytest.fixture
@@ -20,24 +21,19 @@ def nan_array():
 
 
 @pytest.fixture
-def nan_df_with_categories(nan_array):
-    rng = np.random.default_rng(0)
-    categories = rng.choice(np.array(["a", "b", "c", "d"]), size=nan_array.shape[0]).astype(object)
-    categories[0] = None
-    categories[3] = np.nan
-    df = pd.DataFrame(nan_array, columns=[f"num_{i}" for i in range(nan_array.shape[1])])
-    df.insert(0, "category", categories)
+def titanic_mixed_df():
+    df = load_titanic()
+
+    cols = ["sex", "age", "fare", "embarked", "deck"]
+    df = df[cols].copy()
+    df["sex"] = df["sex"].astype("category")
+    df["embarked"] = df["embarked"].astype("category")
+    df["deck"] = df["deck"].astype("category")
     return df
 
 
 def test_multivariate_imputer_less_nans(nan_array):
     imputer = MultivariateImputer()
-    imputed_array = imputer(nan_array)
-    assert np.isnan(imputed_array).sum() < np.isnan(nan_array).sum()
-
-
-def test_elm_imputer_less_nans(nan_array):
-    imputer = ELMImputer()
     imputed_array = imputer(nan_array)
     assert np.isnan(imputed_array).sum() < np.isnan(nan_array).sum()
 
@@ -50,12 +46,16 @@ def test_multivariate_imputer_dataframe_support(nan_array):
     assert np.isnan(imputed_df.values).sum() < np.isnan(df.values).sum()
 
 
-def test_multivariate_imputer_categorical_dataframe_support(nan_df_with_categories):
+def test_multivariate_imputer_categorical_dataframe_support(titanic_mixed_df):
     imputer = MultivariateImputer(rng=0)
-    imputed_df = imputer(nan_df_with_categories)
-    assert list(imputed_df.columns) == list(nan_df_with_categories.columns)
-    assert imputed_df["category"].isna().sum() < nan_df_with_categories["category"].isna().sum()
-    assert set(imputed_df["category"].dropna().unique()).issubset({"a", "b", "c", "d"})
+    imputed_df = imputer(titanic_mixed_df)
+    assert list(imputed_df.columns) == list(titanic_mixed_df.columns)
+    assert imputed_df["sex"].isna().sum() < titanic_mixed_df["sex"].isna().sum()
+    assert imputed_df["embarked"].isna().sum() < titanic_mixed_df["embarked"].isna().sum()
+    assert imputed_df["deck"].isna().sum() < titanic_mixed_df["deck"].isna().sum()
+    assert set(imputed_df["sex"].dropna().unique()).issubset({"male", "female"})
+    assert set(imputed_df["embarked"].dropna().unique()).issubset({"C", "Q", "S"})
+    assert set(imputed_df["deck"].dropna().unique()).issubset({"A", "B", "C", "D", "E", "F", "G", "T"})
 
 
 def test_multivariate_imputer_cols_to_impute(nan_array):
