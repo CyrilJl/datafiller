@@ -1,10 +1,10 @@
 import numpy as np
-from numba import jit, prange
+from numba import njit, prange
 
 from .ridge import FastRidge
 
 
-@jit(nopython=True, parallel=True)
+@njit(parallel=True, cache=True)
 def _random_projection_relu(X, W, bias):
     """
     Computes the random projection of X and applies the ReLU activation.
@@ -17,8 +17,10 @@ def _random_projection_relu(X, W, bias):
             proj = bias[j]
             for k in range(n_features):
                 proj += X[i, k] * W[k, j]
+            if proj < 0:
+                proj = 0
             projected[i, j] = proj
-    return np.maximum(projected, 0)
+    return projected
 
 
 class ExtremeLearningMachine:

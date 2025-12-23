@@ -4,7 +4,7 @@ from typing import Iterable, Union
 
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_bool_dtype, is_object_dtype, is_string_dtype
+from pandas.api.types import is_bool_dtype, is_float_dtype, is_integer_dtype, is_object_dtype, is_string_dtype
 from sklearn.base import ClassifierMixin, RegressorMixin
 from sklearn.linear_model import LogisticRegression
 from tqdm.auto import tqdm
@@ -234,6 +234,18 @@ class MultivariateImputer:
             "original_dtypes": original_dtypes,
         }
 
+    def _cast_series_to_dtype(self, series: pd.Series, dtype) -> pd.Series:
+        """Cast a numeric series back to the original dtype."""
+        if is_integer_dtype(dtype):
+            rounded = series.round()
+            try:
+                return rounded.astype(dtype)
+            except (TypeError, ValueError):
+                return rounded.astype(pd.Int64Dtype())
+        if is_float_dtype(dtype):
+            return series.astype(dtype)
+        return series.astype(dtype)
+
     def _decode_dataframe(
         self,
         x_imputed: np.ndarray,
@@ -276,6 +288,7 @@ class MultivariateImputer:
                     series = pd.Series(decoded, index=original_index)
             else:
                 series = pd.Series(col_data, index=original_index)
+                series = self._cast_series_to_dtype(series, original_dtypes[col])
 
             data[col] = series
 

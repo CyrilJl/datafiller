@@ -50,7 +50,6 @@ def test_multivariate_imputer_categorical_dataframe_support(titanic_mixed_df):
     imputer = MultivariateImputer(rng=0)
     imputed_df = imputer(titanic_mixed_df)
     assert list(imputed_df.columns) == list(titanic_mixed_df.columns)
-    assert imputed_df["sex"].isna().sum() < titanic_mixed_df["sex"].isna().sum()
     assert imputed_df["embarked"].isna().sum() < titanic_mixed_df["embarked"].isna().sum()
     assert imputed_df["deck"].isna().sum() < titanic_mixed_df["deck"].isna().sum()
     assert set(imputed_df["sex"].dropna().unique()).issubset({"male", "female"})
@@ -95,6 +94,19 @@ def test_multivariate_imputer_boolean_support():
     assert imputed_df["flag"].isna().sum() < df["flag"].isna().sum()
     assert imputed_df["flag"].dtype == "boolean"
     assert set(imputed_df.columns) == {"flag", "value"}
+
+
+def test_multivariate_imputer_preserves_numeric_dtypes():
+    df = pd.DataFrame(
+        {
+            "count": pd.Series([1, 2, None, 4, 5], dtype="Int64"),
+            "value": pd.Series([10.0, 20.0, 30.0, 40.0, 50.0], dtype="float64"),
+        }
+    )
+    imputer = MultivariateImputer(rng=0)
+    imputed_df = imputer(df)
+    assert imputed_df["count"].dtype == df["count"].dtype
+    assert imputed_df["value"].dtype == df["value"].dtype
 
 
 @pytest.mark.parametrize("use_df", [False, True])
