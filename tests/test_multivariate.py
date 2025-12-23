@@ -1,23 +1,39 @@
 import numpy as np
 import pandas as pd
 import pytest
+
+from datafiller.datasets import load_titanic
 from datafiller.multivariate import MultivariateImputer
-from datafiller.multivariate.elm_imputer import ELMImputer
 
 
 @pytest.fixture
 def nan_array():
-    return np.array([[1, 2, 3, np.nan], [4, np.nan, 6, 7], [7, 8, 9, 10], [np.nan, 12, 13, 14]])
+    rng = np.random.default_rng(0)
+    n_samples = 9
+    n_features = 10
+    mean = np.linspace(0.0, 1.0, n_features)
+    cov = np.fromfunction(lambda i, j: 0.5 ** np.abs(i - j), (n_features, n_features))
+    x = rng.multivariate_normal(mean, cov, size=n_samples)
+    n_nans = int(x.size * 0.10)
+    nan_indices = rng.choice(x.size, size=n_nans, replace=False)
+    x.flat[nan_indices] = np.nan
+    return x
+
+
+@pytest.fixture
+def titanic_mixed_df():
+    df = load_titanic()
+
+    cols = ["sex", "age", "fare", "embarked", "deck"]
+    df = df[cols].copy()
+    df["sex"] = df["sex"].astype("category")
+    df["embarked"] = df["embarked"].astype("category")
+    df["deck"] = df["deck"].astype("category")
+    return df
 
 
 def test_multivariate_imputer_less_nans(nan_array):
     imputer = MultivariateImputer()
-    imputed_array = imputer(nan_array)
-    assert np.isnan(imputed_array).sum() < np.isnan(nan_array).sum()
-
-
-def test_elm_imputer_less_nans(nan_array):
-    imputer = ELMImputer()
     imputed_array = imputer(nan_array)
     assert np.isnan(imputed_array).sum() < np.isnan(nan_array).sum()
 
@@ -28,6 +44,17 @@ def test_multivariate_imputer_dataframe_support(nan_array):
     imputed_df = imputer(df)
     assert isinstance(imputed_df, pd.DataFrame)
     assert np.isnan(imputed_df.values).sum() < np.isnan(df.values).sum()
+
+
+def test_multivariate_imputer_categorical_dataframe_support(titanic_mixed_df):
+    imputer = MultivariateImputer(rng=0)
+    imputed_df = imputer(titanic_mixed_df)
+    assert list(imputed_df.columns) == list(titanic_mixed_df.columns)
+    assert imputed_df["embarked"].isna().sum() < titanic_mixed_df["embarked"].isna().sum()
+    assert imputed_df["deck"].isna().sum() < titanic_mixed_df["deck"].isna().sum()
+    assert set(imputed_df["sex"].dropna().unique()).issubset({"male", "female"})
+    assert set(imputed_df["embarked"].dropna().unique()).issubset({"C", "Q", "S"})
+    assert set(imputed_df["deck"].dropna().unique()).issubset({"A", "B", "C", "D", "E", "F", "G", "T"})
 
 
 def test_multivariate_imputer_cols_to_impute(nan_array):
@@ -53,6 +80,33 @@ def test_multivariate_imputer_min_samples_train(nan_array):
     imputed_array = imputer(nan_array)
     # With a high min_samples_train, no imputation should happen
     assert np.isnan(imputed_array).sum() == np.isnan(nan_array).sum()
+
+
+def test_multivariate_imputer_boolean_support():
+    df = pd.DataFrame(
+        {
+            "flag": pd.Series([True, False, None, True, None], dtype="boolean"),
+            "value": [1.0, 2.0, 3.0, np.nan, 5.0],
+        }
+    )
+    imputer = MultivariateImputer(rng=0)
+    imputed_df = imputer(df)
+    assert imputed_df["flag"].isna().sum() < df["flag"].isna().sum()
+    assert imputed_df["flag"].dtype == "boolean"
+    assert set(imputed_df.columns) == {"flag", "value"}
+
+
+def test_multivariate_imputer_preserves_numeric_dtypes():
+    df = pd.DataFrame(
+        {
+            "count": pd.Series([1, 2, None, 4, 5], dtype="Int64"),
+            "value": pd.Series([10.0, 20.0, 30.0, 40.0, 50.0], dtype="float64"),
+        }
+    )
+    imputer = MultivariateImputer(rng=0)
+    imputed_df = imputer(df)
+    assert imputed_df["count"].dtype == df["count"].dtype
+    assert imputed_df["value"].dtype == df["value"].dtype
 
 
 @pytest.mark.parametrize("use_df", [False, True])

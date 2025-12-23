@@ -1,3 +1,5 @@
+:notoc: true
+
 API Reference
 #############
 
@@ -18,14 +20,6 @@ Imputer Classes
    :class: dropdown
 
    .. autoclass:: datafiller.TimeSeriesImputer
-      :members: __call__
-      :undoc-members:
-      :show-inheritance:
-
-.. admonition:: ELMImputer
-   :class: dropdown
-
-   .. autoclass:: datafiller.ELMImputer
       :members: __call__
       :undoc-members:
       :show-inheritance:

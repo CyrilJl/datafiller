@@ -6,7 +6,7 @@ import numpy as np
 from numba import njit, prange
 
 
-@njit(boundscheck=True, cache=True)
+@njit(boundscheck=False, cache=True)
 def nan_positions(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Finds the positions of NaNs in a 2D array.
 
@@ -35,7 +35,7 @@ def nan_positions(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     return mask_nan, iy[:cnt], ix[:cnt]
 
 
-@njit(boundscheck=True, cache=True)
+@njit(boundscheck=False, cache=True)
 def nan_positions_subset(
     iy: np.ndarray,
     ix: np.ndarray,
@@ -67,7 +67,7 @@ def nan_positions_subset(
     return sub_iy[:cnt], sub_ix[:cnt]
 
 
-@njit(parallel=True, boundscheck=True, cache=True)
+@njit(parallel=True, boundscheck=False, cache=True)
 def _subset(X: np.ndarray, rows: np.ndarray, columns: np.ndarray) -> np.ndarray:
     """Extracts a subset of a matrix based on row and column indices.
 
@@ -86,7 +86,7 @@ def _subset(X: np.ndarray, rows: np.ndarray, columns: np.ndarray) -> np.ndarray:
     return Xs
 
 
-@njit(boundscheck=True, cache=True)
+@njit(boundscheck=False, cache=True)
 def _subset_one_column(X: np.ndarray, rows: np.ndarray, col: int) -> np.ndarray:
     Xs = np.empty(len(rows), dtype=X.dtype)
     for i in range(len(rows)):
@@ -94,7 +94,7 @@ def _subset_one_column(X: np.ndarray, rows: np.ndarray, col: int) -> np.ndarray:
     return Xs
 
 
-@njit(boundscheck=True, cache=True)
+@njit(boundscheck=False, cache=True)
 def _imputable_rows(mask_nan: np.ndarray, col: int, mask_rows_to_impute: np.ndarray) -> np.ndarray:
     """Finds rows that have a NaN in a specific column and are marked for imputation.
 
@@ -116,7 +116,7 @@ def _imputable_rows(mask_nan: np.ndarray, col: int, mask_rows_to_impute: np.ndar
     return ret[:cnt]
 
 
-@njit(boundscheck=True, cache=True)
+@njit(boundscheck=False, cache=True)
 def _trainable_rows(mask_nan: np.ndarray, col: int) -> np.ndarray:
     """Finds rows that do not have a NaN in a specific column.
 
@@ -139,7 +139,7 @@ def _trainable_rows(mask_nan: np.ndarray, col: int) -> np.ndarray:
     return ret[:cnt]
 
 
-@njit(boundscheck=True, parallel=True)
+@njit(boundscheck=False, parallel=True)
 def _mask_index_to_impute(size: int, to_impute: np.ndarray) -> np.ndarray:
     """Converts a list of indices to a boolean mask.
 
@@ -163,7 +163,7 @@ def unique2d(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     return x[idx], inv.ravel()
 
 
-@njit(boundscheck=True, parallel=True)
+@njit(boundscheck=False, parallel=True)
 def _index_to_mask(x: np.ndarray, n: int) -> np.ndarray:
     """Converts an array of indices to a boolean mask.
 

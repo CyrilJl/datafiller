@@ -1,11 +1,12 @@
 """Core implementation of the DataFiller imputer."""
 
-import warnings
 from typing import Iterable, Union
 
 import numpy as np
 import pandas as pd
-from sklearn.base import RegressorMixin
+from pandas.api.types import is_bool_dtype, is_float_dtype, is_integer_dtype, is_object_dtype, is_string_dtype
+from sklearn.base import ClassifierMixin, RegressorMixin
+from sklearn.linear_model import LogisticRegression
 from tqdm.auto import tqdm
 
 from .._optimask import optimask
@@ -13,13 +14,13 @@ from ..estimators.ridge import FastRidge
 from ._numba_utils import (
     _imputable_rows,
     _index_to_mask,
+    _mask_index_to_impute,
     _subset,
     _subset_one_column,
     _trainable_rows,
     nan_positions,
     nan_positions_subset,
     unique2d,
-    _mask_index_to_impute,
 )
 from ._scoring import scoring
 from ._utils import (
@@ -36,12 +37,18 @@ class MultivariateImputer:
     This class uses a model-based approach to fill in missing values, where
     each feature with missing values is predicted using other features in the
     dataset. It is designed to be efficient, using Numba for critical parts
-    and finding optimal data subsets for model training.
+    and finding optimal data subsets for model training. When a pandas
+    DataFrame contains categorical, string, or boolean columns, they are
+    one-hot encoded internally and imputed with a classifier before returning
+    the original column layout.
 
     Args:
-        estimator (RegressorMixin, optional): A scikit-learn compatible
+        regressor (RegressorMixin, optional): A scikit-learn compatible
             regressor. It should be a lightweight model, as it is fitted many
             times. By default, a custom Ridge implementation is used.
+        classifier (ClassifierMixin, optional): A scikit-learn compatible
+            classifier used for categorical and string targets. Defaults to
+            ``LogisticRegression``.
         verbose (int, optional): The verbosity level. Defaults to 0.
         min_samples_train (int, optional): The minimum number of samples
             required to train a model. If, after the imputation, some values
@@ -91,13 +98,22 @@ class MultivariateImputer:
 
     def __init__(
         self,
-        estimator: RegressorMixin = FastRidge(),
+        *,
+        regressor: RegressorMixin | None = None,
+        classifier: ClassifierMixin | None = None,
         verbose: int = 0,
         min_samples_train: int | None = None,
         rng: Union[int, None] = None,
         scoring: Union[str, callable] = "default",
     ):
-        self.estimator = estimator
+        """
+        Args:
+            regressor: Regressor used to impute numerical targets. Defaults to ``FastRidge``.
+            classifier: Classifier used to impute categorical or string targets.
+                Defaults to ``LogisticRegression``.
+        """
+        self.regressor = regressor or FastRidge()
+        self.classifier = classifier or LogisticRegression(max_iter=10000)
         self.verbose = int(verbose)
         if min_samples_train is None:
             self.min_samples_train = 1
@@ -156,6 +172,122 @@ class MultivariateImputer:
             return np.sort(sampled_cols)
         return cols_to_sample_from
 
+    def _encode_dataframe(self, df: pd.DataFrame) -> dict:
+        """Encode a pandas DataFrame into a numeric matrix suitable for imputation."""
+        encoded_arrays = []
+        encoded_feature_names: list[str] = []
+        main_column_indices: list[int] = []
+        categorical_targets: dict[int, list] = {}
+        encoded_index_to_original: dict[int, str] = {}
+        original_dtypes = df.dtypes.to_dict()
+
+        for col in df.columns:
+            series = df[col]
+            is_categorical = any(
+                [
+                    isinstance(series.dtype, pd.CategoricalDtype),
+                    is_object_dtype(series.dtype),
+                    is_string_dtype(series.dtype),
+                    is_bool_dtype(series.dtype),
+                ]
+            )
+
+            main_idx = len(encoded_feature_names)
+            encoded_index_to_original[main_idx] = col
+            main_column_indices.append(main_idx)
+            encoded_feature_names.append(col)
+
+            if is_categorical:
+                if isinstance(series.dtype, pd.CategoricalDtype):
+                    categories = series.cat.categories.tolist()
+                else:
+                    categories = pd.Categorical(series.dropna()).categories.tolist()
+                cat_series = pd.Categorical(series, categories=categories)
+                codes = cat_series.codes.astype(np.float32)
+                codes[codes == -1] = np.nan
+                categorical_targets[main_idx] = categories
+                encoded_arrays.append(codes.reshape(-1, 1))
+
+                dummy_df = pd.get_dummies(series, prefix=col, dummy_na=False)
+                if len(dummy_df.columns):
+                    if series.isna().any():
+                        dummy_df = dummy_df.mask(series.isna())
+                    dummy_df = dummy_df.astype(np.float32)
+                    encoded_feature_names.extend(dummy_df.columns.tolist())
+                    encoded_arrays.append(dummy_df.to_numpy(dtype=np.float32, copy=False))
+            else:
+                encoded_arrays.append(series.to_numpy(dtype=np.float32).reshape(-1, 1))
+
+        encoded_matrix = np.concatenate(encoded_arrays, axis=1).astype(np.float32, copy=False)
+        return {
+            "data": encoded_matrix,
+            "main_column_indices": np.array(main_column_indices, dtype=int),
+            "encoded_feature_names": encoded_feature_names,
+            "categorical_targets": categorical_targets,
+            "encoded_index_to_original": encoded_index_to_original,
+            "original_dtypes": original_dtypes,
+        }
+
+    def _cast_series_to_dtype(self, series: pd.Series, dtype) -> pd.Series:
+        """Cast a numeric series back to the original dtype."""
+        if is_integer_dtype(dtype):
+            rounded = series.round()
+            try:
+                return rounded.astype(dtype)
+            except (TypeError, ValueError):
+                return rounded.astype(pd.Int64Dtype())
+        if is_float_dtype(dtype):
+            return series.astype(dtype)
+        return series.astype(dtype)
+
+    def _decode_dataframe(
+        self,
+        x_imputed: np.ndarray,
+        original_index: pd.Index,
+        original_columns: pd.Index,
+        main_column_indices: np.ndarray,
+        categorical_targets: dict[int, list],
+        original_dtypes: dict,
+    ) -> pd.DataFrame:
+        """Decode an imputed numeric matrix back to the original DataFrame layout."""
+        data = {}
+        for i, col in enumerate(original_columns):
+            encoded_idx = main_column_indices[i]
+            col_data = x_imputed[:, encoded_idx]
+
+            if encoded_idx in categorical_targets:
+                categories = categorical_targets[encoded_idx]
+                mask = np.isnan(col_data)
+                decoded = np.full(len(col_data), np.nan, dtype=object)
+                if len(categories) and np.any(~mask):
+                    category_values = np.array(categories, dtype=object)
+                    decoded[~mask] = category_values[col_data[~mask].astype(np.int64)]
+
+                dtype = original_dtypes[col]
+                if is_bool_dtype(dtype):
+                    series = pd.Series(decoded, index=original_index, dtype="boolean")
+                elif isinstance(dtype, pd.CategoricalDtype):
+                    dtype_categories = getattr(dtype, "categories", None)
+                    series = pd.Series(
+                        pd.Categorical(
+                            decoded,
+                            categories=dtype_categories if dtype_categories is not None else categories,
+                            ordered=getattr(dtype, "ordered", False),
+                        ),
+                        index=original_index,
+                    )
+                elif is_string_dtype(dtype):
+                    series = pd.Series(decoded, index=original_index, dtype="string")
+                else:
+                    series = pd.Series(decoded, index=original_index)
+            else:
+                series = pd.Series(col_data, index=original_index)
+                series = self._cast_series_to_dtype(series, original_dtypes[col])
+
+            data[col] = series
+
+        return pd.DataFrame(data, index=original_index, columns=original_columns)
+
     def _impute_col(
         self,
         x: np.ndarray,
@@ -168,6 +300,7 @@ class MultivariateImputer:
         n_nearest_features: int | None,
         scores: np.ndarray | None,
         scores_index: int,
+        categorical_cols: set[int],
     ) -> None:
         """Imputes all missing values in a single column.
 
@@ -186,6 +319,8 @@ class MultivariateImputer:
             scores (np.ndarray | None): The feature selection scores.
             scores_index (int): The index of the column being imputed in the
                 scores matrix.
+            categorical_cols (set[int]): Indices of columns that should be
+                treated as categorical targets.
         """
         m, n = x.shape
 
@@ -236,10 +371,21 @@ class MultivariateImputer:
 
                 X_train = _subset(X=x, rows=rows, columns=cols)
                 y_train = _subset_one_column(X=x, rows=rows, col=col_to_impute)
-                self.estimator.fit(X=X_train, y=y_train)
-                x_imputed[index_predict, col_to_impute] = self.estimator.predict(
-                    _subset(X=x, rows=index_predict, columns=cols)
-                )
+                is_categorical_target = col_to_impute in categorical_cols
+                if is_categorical_target:
+                    unique_y = np.unique(y_train)
+                    if len(unique_y) < 2:
+                        x_imputed[index_predict, col_to_impute] = unique_y[0]
+                        continue
+                    estimator = self.classifier
+                    y_train = y_train.astype(np.int64)
+                else:
+                    estimator = self.regressor
+                estimator.fit(X=X_train, y=y_train)
+                predictions = estimator.predict(_subset(X=x, rows=index_predict, columns=cols))
+                if is_categorical_target:
+                    predictions = predictions.astype(np.float32)
+                x_imputed[index_predict, col_to_impute] = predictions
 
     def __call__(
         self,
@@ -275,12 +421,31 @@ class MultivariateImputer:
             (NumPy array or pandas DataFrame).
         """
         is_df = isinstance(x, pd.DataFrame)
+        categorical_targets: dict[int, list] = {}
+        encoded_feature_names: list[str] | None = None
+        encoded_index_to_original: dict[int, str] = {}
+        original_index = None
+        original_columns = None
+        main_column_indices = None
+        original_dtypes = None
+
         if is_df:
             original_index = x.index
             original_columns = x.columns
             rows_to_impute = _dataframe_rows_to_impute_to_indices(rows_to_impute, original_index)
-            cols_to_impute = _dataframe_cols_to_impute_to_indices(cols_to_impute, original_columns)
-            x = x.to_numpy(dtype=np.float32)
+            cols_to_impute_df = _dataframe_cols_to_impute_to_indices(cols_to_impute, original_columns)
+            cols_to_impute_processed = _process_to_impute(size=len(original_columns), to_impute=cols_to_impute_df)
+
+            encoded = self._encode_dataframe(x)
+            x = encoded["data"]
+            main_column_indices = encoded["main_column_indices"]
+            categorical_targets = encoded["categorical_targets"]
+            encoded_feature_names = encoded["encoded_feature_names"]
+            encoded_index_to_original = encoded["encoded_index_to_original"]
+            original_dtypes = encoded["original_dtypes"]
+            cols_to_impute = np.array([main_column_indices[idx] for idx in cols_to_impute_processed], dtype=np.int64)
+        else:
+            x = np.asarray(x)
 
         n_nearest_features = _validate_input(x, rows_to_impute, cols_to_impute, n_nearest_features)
 
@@ -288,6 +453,7 @@ class MultivariateImputer:
         rows_to_impute = _process_to_impute(size=m, to_impute=rows_to_impute)
         cols_to_impute = _process_to_impute(size=n, to_impute=cols_to_impute)
         mask_rows_to_impute = _mask_index_to_impute(size=m, to_impute=rows_to_impute)
+        categorical_cols = set(categorical_targets.keys())
 
         if n_nearest_features is not None:
             if self.scoring == "default":
@@ -303,15 +469,37 @@ class MultivariateImputer:
         mask_nan, iy, ix = nan_positions(x)
 
         for i, col in enumerate(tqdm(cols_to_impute, leave=False, disable=(not self.verbose))):
-            self._impute_col(x, x_imputed, col, mask_nan, mask_rows_to_impute, iy, ix, n_nearest_features, scores, i)
+            self._impute_col(
+                x,
+                x_imputed,
+                col,
+                mask_nan,
+                mask_rows_to_impute,
+                iy,
+                ix,
+                n_nearest_features,
+                scores,
+                i,
+                categorical_cols,
+            )
 
         if is_df and self.imputation_features_ is not None:
+            assert encoded_feature_names is not None
             self.imputation_features_ = {
-                original_columns[col]: original_columns[features].tolist()
+                encoded_index_to_original.get(col, encoded_feature_names[col]): [
+                    encoded_index_to_original.get(feature, encoded_feature_names[feature]) for feature in features
+                ]
                 for col, features in self.imputation_features_.items()
             }
 
         if is_df:
-            return pd.DataFrame(x_imputed, index=original_index, columns=original_columns)
+            return self._decode_dataframe(
+                x_imputed=x_imputed,
+                original_index=original_index,
+                original_columns=original_columns,
+                main_column_indices=main_column_indices,
+                categorical_targets=categorical_targets,
+                original_dtypes=original_dtypes,
+            )
 
         return x_imputed

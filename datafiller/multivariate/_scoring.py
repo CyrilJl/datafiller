@@ -11,8 +11,6 @@ def preimpute(x: np.ndarray) -> np.ndarray:
     Returns:
         The array with NaNs filled by column means.
 
-    Raises:
-        ValueError: If any column is entirely NaN.
     """
     xp = x.copy()
     col_means = np.nanmean(x, axis=0)

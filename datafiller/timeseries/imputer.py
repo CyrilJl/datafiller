@@ -2,7 +2,7 @@ from typing import Iterable, Union
 
 import numpy as np
 import pandas as pd
-from sklearn.base import RegressorMixin
+from sklearn.base import ClassifierMixin, RegressorMixin
 
 from ..estimators.ridge import FastRidge
 from ..multivariate.imputer import MultivariateImputer
@@ -22,8 +22,11 @@ class TimeSeriesImputer:
             the lags and leads to create as autoregressive features. Positive
             integers create lags (e.g., `t-1`), and negative integers create
             leads (e.g., `t+1`). Defaults to `(1,)`.
-        estimator (RegressorMixin, optional): A scikit-learn compatible
-            estimator to use for imputation. Defaults to `LinearRegression()`.
+        regressor (RegressorMixin, optional): A scikit-learn compatible
+            regressor used for numeric targets. Defaults to ``FastRidge``.
+        classifier (ClassifierMixin, optional): A scikit-learn compatible
+            classifier used for categorical or string targets. Defaults to
+            ``LogisticRegression``.
         min_samples_train (int, optional): The minimum number of samples
             required to train a model. Defaults to `None`, which means that a
             model will be trained if at least one sample is available.
@@ -68,7 +71,8 @@ class TimeSeriesImputer:
     def __init__(
         self,
         lags: Iterable[int] = (1,),
-        estimator: RegressorMixin = FastRidge(),
+        regressor: RegressorMixin | None = None,
+        classifier: ClassifierMixin | None = None,
         min_samples_train: int | None = None,
         rng: Union[int, None] = None,
         verbose: int = 0,
@@ -84,7 +88,8 @@ class TimeSeriesImputer:
         if min_samples_train is None:
             min_samples_train = 1
         self.multivariate_imputer = MultivariateImputer(
-            estimator=estimator,
+            regressor=regressor,
+            classifier=classifier,
             verbose=verbose,
             min_samples_train=min_samples_train,
             rng=rng,
@@ -138,6 +143,7 @@ class TimeSeriesImputer:
             raise ValueError("DataFrame index must have a frequency.")
 
         if self.interpolate_gaps_less_than is not None:
+            df = df.copy()
             for col in df.columns:
                 df[col] = interpolate_small_gaps(df[col], self.interpolate_gaps_less_than)
 

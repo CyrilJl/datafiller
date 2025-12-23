@@ -1,6 +1,36 @@
 import pandas as pd
 
-# This file will contain functions to fetch popular time series datasets.
+# This file will contain functions to fetch popular datasets.
+
+
+def load_titanic() -> pd.DataFrame:
+    """Download and return the Titanic dataset (mixed numerical/categorical).
+
+    The dataset is downloaded and cached using pooch. It comes from the
+    seaborn-datasets repository and includes missing values in both numeric
+    and categorical columns.
+
+    Returns:
+        pd.DataFrame: The Titanic dataset.
+
+    Raises:
+        ImportError: If pooch is not installed.
+    """
+    try:
+        import pooch
+    except ImportError:
+        raise ImportError("pooch is required to download the dataset. Please install it with `pip install pooch`.")
+
+    url = "https://raw.githubusercontent.com/mwaskom/seaborn-data/master/titanic.csv"
+    known_hash = "md5:56f29cc0b807cb970a914ed075227f94"
+
+    file_path: str = pooch.retrieve(
+        url=url,
+        known_hash=known_hash,
+        progressbar=True,
+    )
+
+    return pd.read_csv(file_path)
 
 
 def load_pems_bay() -> pd.DataFrame:

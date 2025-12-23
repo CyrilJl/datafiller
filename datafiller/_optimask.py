@@ -11,7 +11,7 @@ from numba import bool_, njit, prange, uint32
 from numba.types import UniTuple
 
 
-@njit(bool_(uint32[:]), boundscheck=True, cache=True)
+@njit(bool_(uint32[:]), boundscheck=False, cache=True)
 def is_decreasing(h: np.ndarray) -> bool:
     """Numba-jitted check if a 1D array is decreasing."""
     for i in range(len(h) - 1):
@@ -20,7 +20,7 @@ def is_decreasing(h: np.ndarray) -> bool:
     return True
 
 
-@njit(uint32[:](uint32[:], uint32[:], uint32), boundscheck=True, cache=True)
+@njit(uint32[:](uint32[:], uint32[:], uint32), boundscheck=False, cache=True)
 def groupby_max(a: np.ndarray, b: np.ndarray, n: int) -> np.ndarray:
     """Numba-jitted equivalent of `np.maximum.at` for a groupby-max operation."""
     size_a = len(a)
@@ -31,7 +31,7 @@ def groupby_max(a: np.ndarray, b: np.ndarray, n: int) -> np.ndarray:
     return ret
 
 
-@njit(uint32[:](uint32[:], uint32[:], uint32[:], uint32, uint32), boundscheck=True, cache=True, parallel=True)
+@njit(uint32[:](uint32[:], uint32[:], uint32[:], uint32, uint32), boundscheck=False, cache=True, parallel=True)
 def diff1d(index, index_with_nan, permutation, index_split, max_val):
     """
     equivalent to np.setdiff1d(rows, rows_with_nan[p_rows][:j0])
@@ -57,7 +57,7 @@ def diff1d(index, index_with_nan, permutation, index_split, max_val):
     return result
 
 
-@njit(UniTuple(uint32[:], 2)(uint32[:], uint32[:], uint32[:]), parallel=True, boundscheck=True, cache=True)
+@njit(UniTuple(uint32[:], 2)(uint32[:], uint32[:], uint32[:]), parallel=True, boundscheck=False, cache=True)
 def apply_p_step(p_step, a, b):
     """Applies a permutation to two arrays."""
     ret_a = np.empty(a.size, dtype=np.uint32)
@@ -69,7 +69,7 @@ def apply_p_step(p_step, a, b):
     return ret_a, ret_b
 
 
-@njit(uint32[:](uint32[:], uint32[:]), parallel=True, boundscheck=True, cache=True)
+@njit(uint32[:](uint32[:], uint32[:]), parallel=True, boundscheck=False, cache=True)
 def numba_apply_permutation(p, x):
     """
     numba equivalent to:
@@ -91,7 +91,7 @@ def numba_apply_permutation(p, x):
     return result
 
 
-@njit((uint32[:], uint32[:]), parallel=True, boundscheck=True, cache=True)
+@njit((uint32[:], uint32[:]), parallel=True, boundscheck=False, cache=True)
 def numba_apply_permutation_inplace(p: np.ndarray, x: np.ndarray):
     """Applies a permutation to an array in-place (Numba-jitted).
 
@@ -127,7 +127,7 @@ def apply_permutation(p: np.ndarray, x: np.ndarray, inplace: bool) -> np.ndarray
         return numba_apply_permutation(p, x)
 
 
-@njit(boundscheck=True, fastmath=True, nogil=True)
+@njit(boundscheck=False, cache=True)
 def _process_index(index: np.ndarray, num: int) -> tuple[np.ndarray, np.ndarray, int]:
     """Compresses an array of indices into a dense, zero-based array.
 

@@ -1,12 +1,15 @@
+:notoc: true
+
 How to Use
 ##########
 
-This guide provides detailed examples on how to use the ``MultivariateImputer`` and ``TimeSeriesImputer``.
+This guide provides detailed examples on how to use the ``MultivariateImputer`` and ``TimeSeriesImputer``. DataFiller targets a pragmatic middle ground for imputation: it does not aim to match the absolute performance of large deep learning models on complex masking patterns, but it is simple to fit, easy to adapt, and flexible to integrate into existing workflows. It is also significantly faster than scikit-learn's ``IterativeImputer``, which makes it well-suited for fast iteration and production use.
 
 Multivariate Imputer
 ********************
 
 The ``MultivariateImputer`` is the core of the library, designed to impute missing values in a 2D NumPy array or pandas DataFrame.
+It automatically handles mixed numerical, boolean, and categorical/string columns by one-hot encoding non-numerical features internally so they can help impute other columns, then returning the original schema.
 
 Basic Example
 =============
@@ -34,24 +37,39 @@ Here is a simple example of how to use the ``MultivariateImputer``.
 
     print(X_imputed)
 
+Titanic Mixed-Feature Example
+=============================
+
+``MultivariateImputer`` handles categorical, string, and boolean columns by one-hot encoding them internally and imputing missing labels with a classifier. The Titanic dataset provides a compact mixed-type example.
+
+This example shows how categorical columns (such as ``sex`` or ``embarked``) are used as predictors for other features while their own missing values are imputed with a classifier.
+
+.. code-block:: python
+
+    from datafiller.datasets import load_titanic
+    from datafiller import MultivariateImputer, ExtremeLearningMachine
+
+    df = load_titanic()
+    df.head(15)
+
+.. include:: _static/titanic_head.md
+   :parser: myst_parser.sphinx_
+
+.. code-block:: python
+
+    imputer = MultivariateImputer(regressor=ExtremeLearningMachine())
+    df_imputed = imputer(df)
+    df_imputed.head(15)
+
+.. include:: _static/titanic_imputed_head.md
+   :parser: myst_parser.sphinx_
+
 Parameters
 ----------
 
-The ``MultivariateImputer`` has several parameters that can be tuned to control the imputation process.
+The ``MultivariateImputer`` has a small set of knobs that control imputation behavior. Initialization parameters include ``regressor`` (a lightweight numeric model, defaulting to a custom Ridge), ``classifier`` for categorical/string/boolean targets (default ``sklearn.linear_model.LogisticRegression``), ``verbose`` to toggle progress output (default ``False``), ``min_samples_train`` to require a minimum training size per column (default ``None``, meaning train whenever at least one sample is available), ``rng`` for reproducible feature sampling, and ``scoring`` for feature selection (use ``'default'`` or provide a callable that takes `X` and `cols_to_impute` and returns a score matrix of shape `(n_cols_to_impute, n_features)`).
 
-**Initialization Parameters**
-
-*   **estimator**: The regressor model to use for imputation. It should be a lightweight model, as it is fitted many times. By default, a custom Ridge implementation is used.
-*   **verbose**: Controls the verbosity of the imputer. If ``True``, it will print progress bars. Defaults to ``False``.
-*   **min_samples_train**: The minimum number of samples required to train a model for a given column. If, after the imputation, some values are still missing, it is likely that no training set with at least `min_samples_train` samples could be found. Defaults to ``None``, which means that a model will be trained if at least one sample is available.
-*   **rng**: A seed for the random number generator, which is used for reproducible feature sampling. Defaults to ``None``.
-*   **scoring**: The scoring function to use for feature selection. If 'default', the default scoring function is used. If a callable, it must take two arguments as input: the data matrix `X` (np.ndarray of shape `(n_samples, n_features)`) and the columns to impute `cols_to_impute` (np.ndarray of shape `(n_cols_to_impute,)`), and return a score matrix of shape `(n_cols_to_impute, n_features)`. Defaults to `'default'`.
-
-**Call Parameters**
-
-*   **rows_to_impute**: The specific rows to impute. Can be a list of indices. If ``None``, all rows are considered.
-*   **cols_to_impute**: The specific columns to impute. Can be a list of indices or column names (for DataFrames). If ``None``, all columns are considered.
-*   **n_nearest_features**: The number of nearest features to use for imputation. If it's an ``int``, it's the absolute number of features. If it's a ``float``, it's the fraction of total features. If ``None``, all features are used.
+Call parameters include ``rows_to_impute`` to target specific rows (default all rows), ``cols_to_impute`` to target specific columns by index or name (default all columns), and ``n_nearest_features`` to control how many features are used for each imputation (an ``int`` count, a ``float`` fraction, or ``None`` for all features).
 
 Advanced Usage
 --------------
@@ -76,7 +94,7 @@ Here is a more advanced example that shows how to use some of the parameters.
 
     # Initialize the imputer with a RandomForestRegressor
     imputer = MultivariateImputer(
-        estimator=RandomForestRegressor(n_estimators=10, random_state=0),
+        regressor=RandomForestRegressor(n_estimators=10, random_state=0),
         verbose=1,
         rng=0
     )
@@ -164,23 +182,9 @@ The ``TimeSeriesImputer`` requires a pandas DataFrame with a ``DatetimeIndex`` t
 Parameters
 ----------
 
-**Initialization Parameters**
+Initialization parameters include ``lags`` for autoregressive features (positive integers create lags like `t-1`, negative integers create leads like `t+1`, default `(1,)`), ``regressor`` for the numeric model (default ``FastRidge()``), ``min_samples_train`` to require a minimum training size (default ``None``), ``rng`` for reproducibility, ``verbose`` for logging, ``scoring`` for feature selection, and ``interpolate_gaps_less_than`` to linearly interpolate short gaps before model-based imputation (default ``None``).
 
-*   **lags**: An iterable of integers specifying the lags and leads to create as autoregressive features. Positive integers create lags (e.g., `t-1`), and negative integers create leads (e.g., `t+1`). Defaults to `(1,)`.
-*   **estimator**: The regressor model to use for imputation. Defaults to ``FastRidge()``.
-*   **min_samples_train**: The minimum number of samples required to train a model. Defaults to ``None``, which means that a model will be trained if at least one sample is available.
-*   **rng**: A seed for the random number generator. Defaults to ``None``.
-*   **verbose**: Controls the verbosity. Defaults to ``0``.
-*   **scoring**: The scoring function for feature selection. Defaults to `'default'`.
-*   **interpolate_gaps_less_than**: The maximum length of gaps to interpolate linearly before model-based imputation. If ``None``, no linear interpolation is performed. Defaults to `None`.
-
-**Call Parameters (``__call__``)**
-
-*   **rows_to_impute**: The indices of rows to impute. If ``None``, all rows are considered.
-*   **cols_to_impute**: The indices or names of columns to impute. If ``None``, all columns are considered.
-*   **n_nearest_features**: The number of features to use for imputation.
-*   **before**: A timestamp-like object. If specified, only rows before this timestamp are imputed.
-*   **after**: A timestamp-like object. If specified, only rows after this timestamp are imputed.
+Call parameters (``__call__``) include ``rows_to_impute`` and ``cols_to_impute`` to target subsets (both default to all), ``n_nearest_features`` to limit features used for imputation, and ``before``/``after`` to restrict the time window by timestamp (ignored when ``rows_to_impute`` is provided).
 
 Advanced Usage
 --------------

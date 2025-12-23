@@ -6,26 +6,26 @@
 </picture>
 
 [![PyPI version](https://badge.fury.io/py/datafiller.svg)](https://badge.fury.io/py/datafiller)
-[![CI Pipeline](https://github.com/CyrilJl/datafiller/actions/workflows/ci-pipeline.yml/badge.svg)](https://github.com/CyrilJl/datafiller/actions/workflows/ci-pipeline.yml)
-[![codecov](https://codecov.io/github/CyrilJl/datafiller/graph/badge.svg?token=PXK2523PL9)](https://codecov.io/github/CyrilJl/datafiller)
 [![Documentation Status](https://readthedocs.org/projects/datafiller/badge/?version=latest)](https://datafiller.readthedocs.io/en/latest/?badge=latest)
 
 
 </div>
 
+# DataFiller
+
 **DataFiller** is a Python library for imputing missing values in datasets. It provides a flexible and powerful way to handle missing data in both numerical arrays and time series data.
+
+## Why DataFiller
+
+DataFiller is a pragmatic imputation tool: it is unlikely to match the absolute performance of large deep learning approaches on complex masking patterns, but it is much simpler to fit, easier to adapt, and more flexible to plug into existing workflows. It is also significantly faster than scikit-learn's ``IterativeImputer``, which makes it a good choice when you need strong results with tight iteration cycles.
 
 ## Key Features
 
-- **Model-Based Imputation**: Uses machine learning models (like linear regression) to predict and fill missing values.
-- **Time Series Support**: A dedicated ``TimeSeriesImputer`` that automatically creates lagged and lead features for imputation.
-- **Efficient**: Leverages Numba for performance-critical sections.
-- **Smart Feature Selection**: Finds the optimal subset of data to use for training imputation models.
-- **Scikit-Learn Compatible**: Integrates with the scikit-learn ecosystem.
+Key features include model-based imputation with lightweight models, mixed data support with one-hot encoding and label recovery, a dedicated ``TimeSeriesImputer`` with lag/lead features, performance-critical sections accelerated by Numba, smart feature selection for training subsets, and scikit-learn compatibility.
 
 ## Installation
 
-You can install DataFiller using pip:
+Install DataFiller using pip:
 
 ```bash
 pip install datafiller
@@ -87,8 +87,21 @@ print("\nImputed DataFrame:")
 print(df_imputed)
 ```
 
+### Imputing a Mixed DataFrame with Categorical Features
+
+Categorical columns are one-hot encoded and used as predictors for other columns, while missing categorical values are imputed with a classifier and mapped back to labels.
+
+```python
+from datafiller.datasets import load_titanic
+from datafiller import MultivariateImputer, ExtremeLearningMachine
+
+df = load_titanic()
+imputer = MultivariateImputer(regressor=ExtremeLearningMachine())
+df_imputed = imputer(df)
+```
+
 ## How It Works
 
-DataFiller uses a model-based imputation strategy. For each column containing missing values, it trains a regression model using the other columns as features. The rows used for training are carefully selected to be the largest, most complete rectangular subset of the data, which is found using the ``optimask`` algorithm. This ensures that the training data is of the highest possible quality, leading to more accurate imputations.
+DataFiller uses a model-based imputation strategy. For each column containing missing values, it trains a model using the other columns as features. Categorical, boolean, and string columns are one-hot encoded for feature construction, so they can drive the imputation of numerical targets, and are imputed with a classifier before being mapped back to the original labels. The rows used for training are carefully selected to be the largest, most complete rectangular subset of the data, which is found using the ``optimask`` algorithm. This ensures that the training data is of the highest possible quality, leading to more accurate imputations.
 
 For more details, see the [documentation](https://datafiller.readthedocs.io/).

@@ -24,22 +24,7 @@ jobs:
 
       - name: Test with pytest
         run: |
-          pytest --cov=datafiller --cov-report=xml
-
-      - name: Upload coverage reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-reports
-          path: |
-            coverage.xml
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./coverage.xml
-          flags: unittests
-          name: codecov-umbrella
+          pytest
 
   format:
     needs: test
@@ -58,8 +43,8 @@ jobs:
       - name: Commit changes
         if: success()
         run: |
-          git diff --quiet || (git add . && \
-          git -c user.name="GitHub Actions" \
-              -c user.email="actions@github.com" \
-              commit -m "Format code with Ruff" && \
-          git push)
+          git diff --quiet || (
+            git add . &&
+            git -c user.name="GitHub Actions" -c user.email="actions@github.com" commit -m "Format code with Ruff" &&
+            git push
+          )
