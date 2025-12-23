@@ -245,20 +245,24 @@ This example loads the PEMS-BAY dataset, punches a large contiguous hole in one 
               y: ground,
               name: "ground truth",
               mode: "lines",
-              line: { color: "#1f77b4" },
+              line: { color: "#2a9d8f", width: 2.4 },
             },
             {
               x: time,
               y: imputed,
               name: "imputed",
               mode: "lines",
-              line: { color: "#ff7f0e" },
+              line: { color: "#e76f51", width: 1.8 },
             },
           ];
+          const maxGround = Math.max(...ground);
+          const maxImputed = Math.max(...imputed);
+          const maxValue = Math.max(maxGround, maxImputed);
+          const yMax = maxValue > 0 ? maxValue * 1.05 : 1;
           const layout = {
             margin: { t: 20, r: 20, b: 40, l: 50 },
             xaxis: { title: "time" },
-            yaxis: { title: "value" },
+            yaxis: { title: "value", range: [0, yMax] },
             legend: { orientation: "h" },
           };
           Plotly.newPlot("pems-bay-timeseries-plot", data, layout, {
