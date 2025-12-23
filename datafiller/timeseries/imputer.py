@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 from sklearn.base import ClassifierMixin, RegressorMixin
 
-from ..estimators.ridge import FastRidge
 from ..multivariate.imputer import MultivariateImputer
 from ._utils import interpolate_small_gaps
 
