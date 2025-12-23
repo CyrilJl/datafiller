@@ -67,9 +67,42 @@ This example shows how categorical columns (such as ``sex`` or ``embarked``) are
 Parameters
 ----------
 
-The ``MultivariateImputer`` has a small set of knobs that control imputation behavior. Initialization parameters include ``regressor`` (a lightweight numeric model, defaulting to a custom Ridge), ``classifier`` for categorical/string/boolean targets (default ``sklearn.linear_model.LogisticRegression``), ``verbose`` to toggle progress output (default ``False``), ``min_samples_train`` to require a minimum training size per column (default ``None``, meaning train whenever at least one sample is available), ``rng`` for reproducible feature sampling, and ``scoring`` for feature selection (use ``'default'`` or provide a callable that takes `X` and `cols_to_impute` and returns a score matrix of shape `(n_cols_to_impute, n_features)`).
+The ``MultivariateImputer`` has a small set of knobs that control imputation behavior. For clarity, they are split into initialization
+parameters (passed to ``MultivariateImputer(...)``) and call parameters (passed to ``imputer(...)``).
 
-Call parameters include ``rows_to_impute`` to target specific rows (default all rows), ``cols_to_impute`` to target specific columns by index or name (default all columns), and ``n_nearest_features`` to control how many features are used for each imputation (an ``int`` count, a ``float`` fraction, or ``None`` for all features).
+Initialization parameters
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``regressor``
+    Numeric model for continuous targets. Defaults to a lightweight custom Ridge regressor.
+
+``classifier``
+    Model for categorical/string/boolean targets. Defaults to ``sklearn.linear_model.LogisticRegression``.
+
+``verbose``
+    Toggle progress output. Default is ``False``.
+
+``min_samples_train``
+    Minimum training size per column. Default is ``None`` (train whenever at least one sample is available).
+
+``rng``
+    Random generator or seed for reproducible feature sampling.
+
+``scoring``
+    Feature selection scoring. Use ``'default'`` or pass a callable ``(X, cols_to_impute) -> scores`` that returns a score matrix of
+    shape ``(n_cols_to_impute, n_features)``.
+
+Call parameters
+~~~~~~~~~~~~~~~
+
+``rows_to_impute``
+    Target specific rows. Default is all rows.
+
+``cols_to_impute``
+    Target specific columns by index or name. Default is all columns.
+
+``n_nearest_features``
+    How many features are used for each imputation. Accepts an ``int`` count, a ``float`` fraction, or ``None`` for all features.
 
 Advanced Usage
 --------------
