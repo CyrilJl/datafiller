@@ -67,42 +67,10 @@ This example shows how categorical columns (such as ``sex`` or ``embarked``) are
 Parameters
 ----------
 
-The ``MultivariateImputer`` has a small set of knobs that control imputation behavior. For clarity, they are split into initialization
-parameters (passed to ``MultivariateImputer(...)``) and call parameters (passed to ``imputer(...)``).
-
-Initialization parameters
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``regressor``
-    Numeric model for continuous targets. Defaults to a lightweight custom Ridge regressor.
-
-``classifier``
-    Model for categorical/string/boolean targets. Defaults to ``sklearn.linear_model.LogisticRegression``.
-
-``verbose``
-    Toggle progress output. Default is ``False``.
-
-``min_samples_train``
-    Minimum training size per column. Default is ``None`` (train whenever at least one sample is available).
-
-``rng``
-    Random generator or seed for reproducible feature sampling.
-
-``scoring``
-    Feature selection scoring. Use ``'default'`` or pass a callable ``(X, cols_to_impute) -> scores`` that returns a score matrix of
-    shape ``(n_cols_to_impute, n_features)``.
-
-Call parameters
-~~~~~~~~~~~~~~~
-
-``rows_to_impute``
-    Target specific rows. Default is all rows.
-
-``cols_to_impute``
-    Target specific columns by index or name. Default is all columns.
-
-``n_nearest_features``
-    How many features are used for each imputation. Accepts an ``int`` count, a ``float`` fraction, or ``None`` for all features.
+The main initialization parameters are ``regressor`` and ``classifier`` to set the numeric/categorical models, plus ``scoring``, ``rng``,
+``min_samples_train``, and ``verbose`` to control feature selection, reproducibility, training thresholds, and logging. Call parameters
+include ``rows_to_impute`` and ``cols_to_impute`` to target subsets and ``n_nearest_features`` to limit the features used per imputation.
+For a complete list and full descriptions, see the :doc:`api` reference.
 
 Advanced Usage
 --------------
@@ -271,6 +239,8 @@ This example loads the PEMS-BAY dataset, punches a large contiguous hole in one 
 Parameters
 ----------
 
-Initialization parameters include ``lags`` for autoregressive features (positive integers create lags like `t-1`, negative integers create leads like `t+1`, default `(1,)`), ``regressor`` for the numeric model (default ``FastRidge()``), ``min_samples_train`` to require a minimum training size (default ``None``), ``rng`` for reproducibility, ``verbose`` for logging, ``scoring`` for feature selection, and ``interpolate_gaps_less_than`` to linearly interpolate short gaps before model-based imputation (default ``None``).
-
-Call parameters (``__call__``) include ``rows_to_impute`` and ``cols_to_impute`` to target subsets (both default to all), ``n_nearest_features`` to limit features used for imputation, and ``before``/``after`` to restrict the time window by timestamp (ignored when ``rows_to_impute`` is provided).
+Initialization parameters include ``lags`` for autoregressive features (positive integers create lags like `t-1`, negative integers create
+leads like `t+1`), ``regressor`` for the numeric model, ``interpolate_gaps_less_than`` to pre-fill short gaps, and the shared controls
+``scoring``, ``rng``, ``min_samples_train``, and ``verbose``. Call parameters include ``rows_to_impute`` and ``cols_to_impute`` to target
+subsets, ``n_nearest_features`` to limit features used for imputation, and ``before``/``after`` to restrict the time window. For a complete
+list and full descriptions, see the :doc:`api` reference.
