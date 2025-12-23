@@ -178,21 +178,66 @@ This example loads the PEMS-BAY dataset, punches a large contiguous hole in one 
     df_missing.loc[:, other_cols] = add_mar(df_missing[other_cols], nan_ratio=0.05)
 
     ts_imputer = TimeSeriesImputer(lags=[1, 2, 3, -1, -2, -3], rng=0)
-    df_imputed = ts_imputer(df_missing, cols_to_impute=[target_col])
-
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(ground_truth.index, ground_truth.values, label="Ground truth", linewidth=1.2)
-    ax.plot(df_imputed.index, df_imputed[target_col].values, label="Imputed", linewidth=1.2)
-    ax.set_title(f"PEMS-BAY imputation for sensor {target_col}")
-    ax.set_xlabel("Time")
-    ax.set_ylabel("Speed")
-    ax.legend(loc="upper right")
-    fig.tight_layout()
-    fig.savefig("docs/_static/pems_bay_timeseries_imputation.png", dpi=150)
+    df_imputed = ts_imputer(df_missing, cols_to_impute=[target_col], n_nearest_features=75)
 
 .. image:: _static/pems_bay_timeseries_imputation.png
    :alt: PEMS-BAY time series imputation
    :align: center
+
+.. raw:: html
+
+    <div id="pems-bay-timeseries-plot" style="width: 100%; height: 420px;"></div>
+    <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+    <script>
+    (function () {
+      const csvUrl = "https://raw.githubusercontent.com/CyrilJl/datafiller/main/docs/_static/pems_bay_timeseries_imputation.csv";
+      fetch(csvUrl)
+        .then((response) => response.text())
+        .then((text) => {
+          const lines = text.trim().split("\n");
+          const header = lines.shift().split(",");
+          const idxTime = header.indexOf("time");
+          const idxTruth = header.indexOf("ground_truth");
+          const idxImputed = header.indexOf("imputed");
+          const time = [];
+          const ground = [];
+          const imputed = [];
+
+          for (const line of lines) {
+            const cols = line.split(",");
+            time.push(cols[idxTime]);
+            ground.push(parseFloat(cols[idxTruth]));
+            imputed.push(parseFloat(cols[idxImputed]));
+          }
+
+          const data = [
+            {
+              x: time,
+              y: ground,
+              name: "ground truth",
+              mode: "lines",
+              line: { color: "#1f77b4" },
+            },
+            {
+              x: time,
+              y: imputed,
+              name: "imputed",
+              mode: "lines",
+              line: { color: "#ff7f0e" },
+            },
+          ];
+          const layout = {
+            margin: { t: 20, r: 20, b: 40, l: 50 },
+            xaxis: { title: "time" },
+            yaxis: { title: "value" },
+            legend: { orientation: "h" },
+          };
+          Plotly.newPlot("pems-bay-timeseries-plot", data, layout, {
+            responsive: true,
+          });
+        });
+    })();
+    </script>
 
 Parameters
 ----------
