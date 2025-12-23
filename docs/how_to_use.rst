@@ -37,32 +37,10 @@ Here is a simple example of how to use the ``MultivariateImputer``.
 
     print(X_imputed)
 
-Categorical and Boolean Example
-===============================
-
-``MultivariateImputer`` also handles categorical, string, and boolean columns by one-hot encoding them internally and imputing missing labels with a classifier.
-
-.. code-block:: python
-
-    import numpy as np
-    import pandas as pd
-    from datafiller import MultivariateImputer
-
-    df = pd.DataFrame(
-        {
-            "city": ["Paris", "Paris", None, "Lyon", "London"],
-            "is_active": pd.Series([True, None, False, True, None], dtype="boolean"),
-            "value": [1.0, np.nan, 3.0, 4.0, 5.0],
-        }
-    )
-
-    imputer = MultivariateImputer()
-    df_imputed = imputer(df)
-
-    print(df_imputed)
-
 Titanic Mixed-Feature Example
 =============================
+
+``MultivariateImputer`` handles categorical, string, and boolean columns by one-hot encoding them internally and imputing missing labels with a classifier. The Titanic dataset provides a compact mixed-type example.
 
 This example shows how categorical columns (such as ``sex`` or ``embarked``) are used as predictors for other features while their own missing values are imputed with a classifier.
 
@@ -72,7 +50,7 @@ This example shows how categorical columns (such as ``sex`` or ``embarked``) are
     from datafiller import MultivariateImputer, ExtremeLearningMachine
 
     df = load_titanic()
-    df.head(20)
+    df.head(15)
 
 .. include:: _static/titanic_head.md
    :parser: myst_parser.sphinx_
@@ -81,7 +59,7 @@ This example shows how categorical columns (such as ``sex`` or ``embarked``) are
 
     imputer = MultivariateImputer(regressor=ExtremeLearningMachine())
     df_imputed = imputer(df)
-    df_imputed.head(20)
+    df_imputed.head(15)
 
 .. include:: _static/titanic_imputed_head.md
    :parser: myst_parser.sphinx_
