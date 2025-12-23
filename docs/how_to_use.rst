@@ -149,35 +149,50 @@ Time Series Imputer
 
 The ``TimeSeriesImputer`` is a wrapper around the ``MultivariateImputer`` that is specifically designed for time series data.
 
-Basic Example
-=============
+PEMS-BAY Example
+================
 
-The ``TimeSeriesImputer`` requires a pandas DataFrame with a ``DatetimeIndex`` that has a defined frequency.
+This example loads the PEMS-BAY dataset, punches a large contiguous hole in one sensor's time series, adds 5% missing-at-random values to other sensors, and imputes the missing values using autoregressive lags and leads.
 
 .. code-block:: python
 
-    import pandas as pd
     import numpy as np
+    import matplotlib.pyplot as plt
     from datafiller import TimeSeriesImputer
+    from datafiller.datasets import add_mar, load_pems_bay
 
-    # Create a time series DataFrame with missing values
-    rng = pd.date_range('2023-01-01', periods=20, freq='D')
-    data = {
-        'feature1': np.sin(np.arange(20) * 0.5),
-        'feature2': np.cos(np.arange(20) * 0.5),
-    }
-    df = pd.DataFrame(data, index=rng)
+    df = load_pems_bay()
+    rng = np.random.default_rng(0)
+    target_col = rng.choice(df.columns)
+    ground_truth = df[target_col].copy()
 
-    # Add some missing values
-    df.loc['2023-01-05', 'feature1'] = np.nan
-    df.loc['2023-01-10', 'feature2'] = np.nan
-    df.loc['2023-01-15', 'feature1'] = np.nan
+    df_missing = df.copy()
+    n_rows = len(df_missing)
+    hole_length = int(n_rows * 0.2)
+    start = n_rows // 2 - hole_length // 2
+    end = start + hole_length
+    df_missing.loc[df_missing.index[start:end], target_col] = np.nan
 
-    # Initialize the imputer with lags [1, 2] and leads [-1, -2]
-    ts_imputer = TimeSeriesImputer(lags=[1, 2, -1, -2])
-    df_imputed = ts_imputer(df)
+    other_cols = df_missing.columns.drop(target_col)
+    np.random.seed(0)
+    df_missing.loc[:, other_cols] = add_mar(df_missing[other_cols], nan_ratio=0.05)
 
-    print(df_imputed)
+    ts_imputer = TimeSeriesImputer(lags=[1, 2, 3, -1, -2, -3], rng=0)
+    df_imputed = ts_imputer(df_missing, cols_to_impute=[target_col])
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(ground_truth.index, ground_truth.values, label="Ground truth", linewidth=1.2)
+    ax.plot(df_imputed.index, df_imputed[target_col].values, label="Imputed", linewidth=1.2)
+    ax.set_title(f"PEMS-BAY imputation for sensor {target_col}")
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Speed")
+    ax.legend(loc="upper right")
+    fig.tight_layout()
+    fig.savefig("docs/_static/pems_bay_timeseries_imputation.png", dpi=150)
+
+.. image:: _static/pems_bay_timeseries_imputation.png
+   :alt: PEMS-BAY time series imputation
+   :align: center
 
 Parameters
 ----------
@@ -185,41 +200,3 @@ Parameters
 Initialization parameters include ``lags`` for autoregressive features (positive integers create lags like `t-1`, negative integers create leads like `t+1`, default `(1,)`), ``regressor`` for the numeric model (default ``FastRidge()``), ``min_samples_train`` to require a minimum training size (default ``None``), ``rng`` for reproducibility, ``verbose`` for logging, ``scoring`` for feature selection, and ``interpolate_gaps_less_than`` to linearly interpolate short gaps before model-based imputation (default ``None``).
 
 Call parameters (``__call__``) include ``rows_to_impute`` and ``cols_to_impute`` to target subsets (both default to all), ``n_nearest_features`` to limit features used for imputation, and ``before``/``after`` to restrict the time window by timestamp (ignored when ``rows_to_impute`` is provided).
-
-Advanced Usage
---------------
-
-This example shows how to use the ``TimeSeriesImputer`` to impute missing values in a specific time window.
-
-.. code-block:: python
-
-    import pandas as pd
-    import numpy as np
-    from datafiller.timeseries import TimeSeriesImputer
-
-    # Create a time series DataFrame with missing values
-    rng = pd.date_range('2023-01-01', periods=20, freq='D')
-    data = {
-        'feature1': np.sin(np.arange(20) * 0.5),
-        'feature2': np.cos(np.arange(20) * 0.5),
-    }
-    df = pd.DataFrame(data, index=rng)
-
-    # Add some missing values
-    df.loc['2023-01-05', 'feature1'] = np.nan
-    df.loc['2023-01-10', 'feature2'] = np.nan
-    df.loc['2023-01-15', 'feature1'] = np.nan
-
-    # Initialize the imputer with lags and linear interpolation
-    ts_imputer = TimeSeriesImputer(
-        lags=[1, 2, -1, -2],
-        interpolate_gaps_less_than=3
-    )
-
-    # Impute only the missing values that occured before 2023-01-12
-    df_imputed = ts_imputer(
-        df,
-        before='2023-01-12'
-    )
-
-    print(df_imputed)
