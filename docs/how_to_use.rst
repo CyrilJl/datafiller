@@ -213,10 +213,6 @@ This example loads the PEMS-BAY dataset, punches a large contiguous hole in one 
     ts_imputer = TimeSeriesImputer(lags=[1, 2, 3, -1, -2, -3], rng=0)
     df_imputed = ts_imputer(df_missing, cols_to_impute=[target_col], n_nearest_features=75)
 
-.. image:: _static/pems_bay_timeseries_imputation.png
-   :alt: PEMS-BAY time series imputation
-   :align: center
-
 .. raw:: html
 
     <div id="pems-bay-timeseries-plot" style="width: 100%; height: 420px;"></div>
