@@ -245,14 +245,14 @@ This example loads the PEMS-BAY dataset, punches a large contiguous hole in one 
               y: ground,
               name: "ground truth",
               mode: "lines",
-              line: { color: "#2b3da4ff", width: 2 },
+              line: { color: "#1f77b4", width: 2 },
             },
             {
               x: time,
               y: imputed,
               name: "imputed",
               mode: "lines",
-              line: { color: "#e76f51", width: 1.4 },
+              line: { color: "#ff7f0e", width: 1.4 },
             },
           ];
           const layout = {
