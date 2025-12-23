@@ -43,7 +43,6 @@ class MultivariateImputer:
     the original column layout.
 
     Args:
-        estimator (RegressorMixin, optional): Deprecated alias for ``regressor``.
         regressor (RegressorMixin, optional): A scikit-learn compatible
             regressor. It should be a lightweight model, as it is fitted many
             times. By default, a custom Ridge implementation is used.
@@ -99,7 +98,6 @@ class MultivariateImputer:
 
     def __init__(
         self,
-        estimator: RegressorMixin | None = None,
         *,
         regressor: RegressorMixin | None = None,
         classifier: ClassifierMixin | None = None,
@@ -110,15 +108,11 @@ class MultivariateImputer:
     ):
         """
         Args:
-            estimator: Deprecated alias for `regressor`. If provided alongside
-                `regressor`, a ``ValueError`` is raised.
             regressor: Regressor used to impute numerical targets. Defaults to ``FastRidge``.
             classifier: Classifier used to impute categorical or string targets.
                 Defaults to ``LogisticRegression``.
         """
-        if estimator is not None and regressor is not None:
-            raise ValueError("Provide only one of `estimator` or `regressor`.")
-        self.regressor = regressor or estimator or FastRidge()
+        self.regressor = regressor or FastRidge()
         self.classifier = classifier or LogisticRegression(max_iter=10000)
         self.verbose = int(verbose)
         if min_samples_train is None:

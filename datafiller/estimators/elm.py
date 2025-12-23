@@ -26,9 +26,11 @@ def _random_projection_relu(X, W, bias):
 class ExtremeLearningMachine:
     """
     An Extreme Learning Machine (ELM) estimator.
+
     This implementation uses a random projection, a ReLU activation, and a
     FastRidge regressor. It is designed for speed and assumes that the input
     data is well-behaved.
+
     Args:
         n_features (int): The number of features in the random projection.
         alpha (float): The regularization strength for the FastRidge regressor.
@@ -58,9 +60,11 @@ class ExtremeLearningMachine:
     def fit(self, X: np.ndarray, y: np.ndarray) -> "ExtremeLearningMachine":
         """
         Fits the ELM model.
+
         Args:
             X (np.ndarray): The training data.
             y (np.ndarray): The target values.
+
         Returns:
             self: The fitted estimator.
         """
@@ -75,8 +79,10 @@ class ExtremeLearningMachine:
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
         Makes predictions using the fitted model.
+
         Args:
             X (np.ndarray): The data to predict on.
+
         Returns:
             np.ndarray: The predicted values.
         """
@@ -86,9 +92,11 @@ class ExtremeLearningMachine:
     def get_params(self, deep: bool = True) -> dict:
         """
         Get parameters for this estimator.
+
         Args:
             deep (bool): If True, will return the parameters for this estimator and
                 contained subobjects that are estimators.
+
         Returns:
             dict: Parameter names mapped to their values.
         """
@@ -101,8 +109,10 @@ class ExtremeLearningMachine:
     def set_params(self, **params) -> "ExtremeLearningMachine":
         """
         Set the parameters of this estimator.
+
         Args:
             **params: Estimator parameters.
+
         Returns:
             self: Estimator instance.
         """
