@@ -67,7 +67,7 @@ This example shows how categorical columns (such as ``sex`` or ``embarked``) are
 Parameters
 ----------
 
-The ``MultivariateImputer`` has a small set of knobs that control imputation behavior. Initialization parameters include ``regressor`` (a lightweight numeric model, defaulting to a custom Ridge; the deprecated alias ``estimator`` is still accepted), ``classifier`` for categorical/string/boolean targets (default ``sklearn.linear_model.LogisticRegression``), ``verbose`` to toggle progress output (default ``False``), ``min_samples_train`` to require a minimum training size per column (default ``None``, meaning train whenever at least one sample is available), ``rng`` for reproducible feature sampling, and ``scoring`` for feature selection (use ``'default'`` or provide a callable that takes `X` and `cols_to_impute` and returns a score matrix of shape `(n_cols_to_impute, n_features)`).
+The ``MultivariateImputer`` has a small set of knobs that control imputation behavior. Initialization parameters include ``regressor`` (a lightweight numeric model, defaulting to a custom Ridge), ``classifier`` for categorical/string/boolean targets (default ``sklearn.linear_model.LogisticRegression``), ``verbose`` to toggle progress output (default ``False``), ``min_samples_train`` to require a minimum training size per column (default ``None``, meaning train whenever at least one sample is available), ``rng`` for reproducible feature sampling, and ``scoring`` for feature selection (use ``'default'`` or provide a callable that takes `X` and `cols_to_impute` and returns a score matrix of shape `(n_cols_to_impute, n_features)`).
 
 Call parameters include ``rows_to_impute`` to target specific rows (default all rows), ``cols_to_impute`` to target specific columns by index or name (default all columns), and ``n_nearest_features`` to control how many features are used for each imputation (an ``int`` count, a ``float`` fraction, or ``None`` for all features).
 
@@ -182,9 +182,9 @@ The ``TimeSeriesImputer`` requires a pandas DataFrame with a ``DatetimeIndex`` t
 Parameters
 ----------
 
-Initialization parameters include ``lags`` for autoregressive features (positive integers create lags like `t-1`, negative integers create leads like `t+1`, default `(1,)`), ``estimator`` for the numeric model (default ``FastRidge()``), ``min_samples_train`` to require a minimum training size (default ``None``), ``rng`` for reproducibility, ``verbose`` for logging, ``scoring`` for feature selection, and ``interpolate_gaps_less_than`` to linearly interpolate short gaps before model-based imputation (default ``None``).
+Initialization parameters include ``lags`` for autoregressive features (positive integers create lags like `t-1`, negative integers create leads like `t+1`, default `(1,)`), ``regressor`` for the numeric model (default ``FastRidge()``), ``min_samples_train`` to require a minimum training size (default ``None``), ``rng`` for reproducibility, ``verbose`` for logging, ``scoring`` for feature selection, and ``interpolate_gaps_less_than`` to linearly interpolate short gaps before model-based imputation (default ``None``).
 
-Call parameters (``__call__``) include ``rows_to_impute`` and ``cols_to_impute`` to target subsets (both default to all), ``n_nearest_features`` to limit features used for imputation, and ``before``/``after`` to restrict the time window by timestamp.
+Call parameters (``__call__``) include ``rows_to_impute`` and ``cols_to_impute`` to target subsets (both default to all), ``n_nearest_features`` to limit features used for imputation, and ``before``/``after`` to restrict the time window by timestamp (ignored when ``rows_to_impute`` is provided).
 
 Advanced Usage
 --------------
