@@ -52,17 +52,125 @@ This example shows how categorical columns (such as ``sex`` or ``embarked``) are
     df = load_titanic()
     df.head(15)
 
-.. include:: _static/titanic_head.md
-   :parser: myst_parser.sphinx_
-
 .. code-block:: python
 
     imputer = MultivariateImputer(regressor=ExtremeLearningMachine())
     df_imputed = imputer(df)
     df_imputed.head(15)
 
-.. include:: _static/titanic_imputed_head.md
-   :parser: myst_parser.sphinx_
+.. raw:: html
+
+    <link href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css" rel="stylesheet">
+    <style>
+      .titanic-table-wrap {
+        display: flex;
+        gap: 16px;
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+      .titanic-table-block {
+        flex: 1 1 420px;
+        min-width: 320px;
+      }
+      .titanic-table-title {
+        margin: 8px 0 6px;
+        font-weight: 600;
+      }
+    </style>
+    <div class="titanic-table-wrap">
+      <div class="titanic-table-block">
+        <div class="titanic-table-title">Original Titanic (titanic.csv)</div>
+        <table id="titanic-table" class="display" style="width: 100%"></table>
+      </div>
+      <div class="titanic-table-block">
+        <div class="titanic-table-title">Imputed Titanic (titanic_imputed.csv)</div>
+        <table id="titanic-imputed-table" class="display" style="width: 100%"></table>
+      </div>
+    </div>
+    <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+    <script>
+    (function () {
+      let tableLeft = null;
+      let tableRight = null;
+      let isSyncingPage = false;
+      let isSyncingScroll = false;
+
+      function buildTable(containerId, csvUrl) {
+        const el = document.getElementById(containerId);
+        if (!el) return;
+        el.insertAdjacentHTML("afterend", "<div class='titanic-table-status'>Loading table...</div>");
+        const statusEl = el.nextElementSibling;
+        fetch(csvUrl)
+          .then((response) => response.text())
+          .then((text) => {
+            const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+            const fields = parsed.meta.fields || [];
+            const columns = fields.map((field) => ({
+              title: field,
+              data: field,
+            }));
+            const table = $(el).DataTable({
+              data: parsed.data,
+              columns: columns,
+              pageLength: 10,
+              lengthMenu: [10, 25, 50, 100],
+              order: [],
+              scrollX: true,
+              scrollY: "420px",
+              scrollCollapse: true,
+            });
+            if (statusEl) statusEl.remove();
+            return table;
+          })
+          .then((table) => {
+            if (!table) return;
+            if (containerId === "titanic-table") {
+              tableLeft = table;
+            } else if (containerId === "titanic-imputed-table") {
+              tableRight = table;
+            }
+            if (tableLeft && tableRight) {
+              syncTables(tableLeft, tableRight);
+            }
+          })
+          .catch(() => {
+            if (statusEl) statusEl.textContent = "Failed to load table data.";
+          });
+      }
+
+      function syncTables(left, right) {
+        left.on("page.dt", () => syncPage(left, right));
+        right.on("page.dt", () => syncPage(right, left));
+
+        const leftBody = $(left.table().container()).find(".dataTables_scrollBody");
+        const rightBody = $(right.table().container()).find(".dataTables_scrollBody");
+
+        leftBody.on("scroll", () => syncScroll(leftBody, rightBody));
+        rightBody.on("scroll", () => syncScroll(rightBody, leftBody));
+      }
+
+      function syncPage(source, target) {
+        if (isSyncingPage) return;
+        isSyncingPage = true;
+        const pageInfo = source.page.info();
+        target.page(pageInfo.page).draw(false);
+        isSyncingPage = false;
+      }
+
+      function syncScroll(sourceEl, targetEl) {
+        if (isSyncingScroll) return;
+        isSyncingScroll = true;
+        targetEl.scrollTop(sourceEl.scrollTop());
+        isSyncingScroll = false;
+      }
+
+      const baseUrl = "https://raw.githubusercontent.com/CyrilJl/datafiller/main/docs/_static/";
+      buildTable("titanic-table", baseUrl + "titanic.csv");
+      buildTable("titanic-imputed-table", baseUrl + "titanic_imputed.csv");
+    })();
+    </script>
 
 Parameters
 ----------
