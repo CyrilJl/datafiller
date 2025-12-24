@@ -11,32 +11,6 @@ Multivariate Imputer
 The ``MultivariateImputer`` is the core of the library, designed to impute missing values in a 2D NumPy array or pandas DataFrame.
 It automatically handles mixed numerical, boolean, and categorical/string columns by one-hot encoding non-numerical features internally so they can help impute other columns, then returning the original schema.
 
-Basic Example
-=============
-
-Here is a simple example of how to use the ``MultivariateImputer``.
-
-.. code-block:: python
-
-    import numpy as np
-    from datafiller import MultivariateImputer
-
-    # Create a matrix with some missing values
-    X = np.array([
-        [1.0, 2.0, 3.0, 4.0],
-        [5.0, np.nan, 7.0, 8.0],
-        [9.0, 10.0, 11.0, np.nan],
-        [13.0, 14.0, 15.0, 16.0],
-    ])
-
-    # Initialize the imputer
-    imputer = MultivariateImputer()
-
-    # Impute the missing values
-    X_imputed = imputer(X)
-
-    print(X_imputed)
-
 Titanic Mixed-Feature Example
 =============================
 
@@ -163,6 +137,7 @@ This example shows how categorical columns (such as ``sex`` or ``embarked``) are
         if (isSyncingScroll) return;
         isSyncingScroll = true;
         targetEl.scrollTop(sourceEl.scrollTop());
+        targetEl.scrollLeft(sourceEl.scrollLeft());
         isSyncingScroll = false;
       }
 
@@ -177,81 +152,9 @@ Parameters
 
 The main initialization parameters are ``regressor`` and ``classifier`` to set the numeric/categorical models, plus ``scoring``, ``rng``,
 ``min_samples_train``, and ``verbose`` to control feature selection, reproducibility, training thresholds, and logging. Call parameters
-include ``rows_to_impute`` and ``cols_to_impute`` to target subsets and ``n_nearest_features`` to limit the features used per imputation.
-For a complete list and full descriptions, see the :doc:`api` reference.
-
-Advanced Usage
---------------
-
-Here is a more advanced example that shows how to use some of the parameters.
-
-.. code-block:: python
-
-    import numpy as np
-    import pandas as pd
-    from datafiller.multivariate import MultivariateImputer
-    from sklearn.ensemble import RandomForestRegressor
-
-    # Create a DataFrame with missing values
-    data = {
-        'A': [1, 2, np.nan, 4, 5],
-        'B': [np.nan, 2, 3, 4, 5],
-        'C': [1, 2, 3, np.nan, 5],
-        'D': [1, 2, 3, 4, np.nan]
-    }
-    df = pd.DataFrame(data)
-
-    # Initialize the imputer with a RandomForestRegressor
-    imputer = MultivariateImputer(
-        regressor=RandomForestRegressor(n_estimators=10, random_state=0),
-        verbose=1,
-        rng=0
-    )
-
-    # Impute only column 'A' and 'B', using only 2 nearest features
-    df_imputed = imputer(
-        df,
-        cols_to_impute=['A', 'B'],
-        n_nearest_features=2
-    )
-
-    print(df_imputed)
-
-Custom Scoring Function
-~~~~~~~~~~~~~~~~~~~~~~~
-
-You can provide a custom scoring function to control how the imputer selects features for imputation. The scoring function should
-take the data matrix `X` and the columns to impute `cols_to_impute` as input, and return a score matrix.
-
-Here is an example of a custom scoring function that simply returns a random score matrix.
-
-.. code-block:: python
-
-    import numpy as np
-    from datafiller.multivariate import MultivariateImputer
-
-    def random_scoring(X, cols_to_impute):
-        n_cols_to_impute = len(cols_to_impute)
-        n_features = X.shape[1]
-        return np.random.rand(n_cols_to_impute, n_features)
-
-    # Create a matrix with missing values
-    X = np.array([
-        [1.0, 2.0, np.nan, 4.0],
-        [5.0, 6.0, 7.0, 8.0],
-        [9.0, np.nan, 11.0, 12.0],
-    ])
-
-    # Initialize the imputer with the custom scoring function
-    imputer = MultivariateImputer(
-        scoring=random_scoring,
-        rng=42
-    )
-
-    # Impute using 2 nearest features, selected based on the random scores
-    X_imputed = imputer(X, n_nearest_features=2)
-
-    print(X_imputed)
+include ``rows_to_impute`` and ``cols_to_impute`` to target subsets and ``n_nearest_features`` to limit the features used per imputation;
+setting ``n_nearest_features`` is recommended to reduce computation time. For a complete list and full descriptions, see the :doc:`api`
+reference.
 
 Time Series Imputer
 ********************
@@ -350,5 +253,5 @@ Parameters
 Initialization parameters include ``lags`` for autoregressive features (positive integers create lags like `t-1`, negative integers create
 leads like `t+1`), ``regressor`` for the numeric model, ``interpolate_gaps_less_than`` to pre-fill short gaps, and the shared controls
 ``scoring``, ``rng``, ``min_samples_train``, and ``verbose``. Call parameters include ``rows_to_impute`` and ``cols_to_impute`` to target
-subsets, ``n_nearest_features`` to limit features used for imputation, and ``before``/``after`` to restrict the time window. For a complete
-list and full descriptions, see the :doc:`api` reference.
+subsets, ``n_nearest_features`` to limit features used for imputation (recommended to reduce computation time), and ``before``/``after`` to
+restrict the time window. For a complete list and full descriptions, see the :doc:`api` reference.

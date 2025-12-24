@@ -1,10 +1,4 @@
-from __future__ import annotations
-
 import numpy as np
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 
 from datafiller import TimeSeriesImputer
 from datafiller.datasets import add_mar, load_pems_bay
@@ -32,19 +26,6 @@ def main() -> None:
     ts_imputer = TimeSeriesImputer(lags=[1, 2, 3, -1, -2, -3], rng=0)
     df_imputed = ts_imputer(df_missing, cols_to_impute=[target_col], n_nearest_features=75)
 
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(ground_truth.index, ground_truth.values, label="Ground truth", linewidth=1.2)
-    ax.plot(df_imputed.index, df_imputed[target_col].values, label="Imputed", linewidth=0.8)
-    margin = max(1, hole_length // 5)
-    left = df_missing.index[max(0, start - margin)]
-    right = df_missing.index[min(n_rows - 1, end + margin)]
-    ax.set_xlim(left, right)
-    ax.set_title(f"PEMS-BAY imputation for sensor {target_col}")
-    ax.set_xlabel("Time")
-    ax.set_ylabel("Speed")
-    ax.legend(loc="upper right")
-    fig.tight_layout()
-    fig.savefig("docs/_static/pems_bay_timeseries_imputation.png", dpi=150)
     df_out = df_imputed[[target_col]].rename(columns={target_col: "imputed"})
     df_out.insert(0, "ground_truth", ground_truth)
     df_out.to_csv("docs/_static/pems_bay_timeseries_imputation.csv", index_label="time")
