@@ -27,6 +27,7 @@ html_theme_options = {
     "main_nav_links": {
         "How To Use": "how_to_use",
         "Algorithm": "algorithm",
+        "Benchmarks": "benchmarks",
         "API Reference": "api",
     },
     "extra_header_link_icons": {
