@@ -25,7 +25,7 @@ class TimeSeriesImputer:
             regressor used for numeric targets. Defaults to ``FastRidge``.
         classifier (ClassifierMixin, optional): A scikit-learn compatible
             classifier used for categorical or string targets. Defaults to
-            ``LogisticRegression``.
+            ``DecisionTreeClassifier(max_depth=4)``.
         min_samples_train (int, optional): The minimum number of samples
             required to train a model. Defaults to `None`, which means that a
             model will be trained if at least one sample is available.

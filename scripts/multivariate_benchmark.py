@@ -3,11 +3,10 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_bool_dtype, is_categorical_dtype, is_object_dtype, is_string_dtype
+from pandas.api.types import is_bool_dtype, is_object_dtype, is_string_dtype
 from sklearn.datasets import load_breast_cancer, load_diabetes, load_wine
 from sklearn.metrics import (
     accuracy_score,
-    balanced_accuracy_score,
     cohen_kappa_score,
     f1_score,
     matthews_corrcoef,
@@ -81,7 +80,12 @@ def apply_mask(df: pd.DataFrame, mask: np.ndarray) -> pd.DataFrame:
     masked = df.copy()
     mask_df = pd.DataFrame(mask, columns=df.columns, index=df.index)
     for col in df.columns:
-        masked.loc[mask_df[col], col] = np.nan
+        if is_bool_dtype(masked[col].dtype):
+            if masked[col].dtype != "boolean":
+                masked[col] = masked[col].astype("boolean")
+            masked.loc[mask_df[col], col] = pd.NA
+        else:
+            masked.loc[mask_df[col], col] = np.nan
     return masked
 
 
@@ -153,12 +157,20 @@ def classification_metrics(y_true: pd.Series, y_pred: pd.Series) -> dict:
     y_true_codes = pd.Categorical(y_true, categories=all_classes).codes
     y_pred_codes = pd.Categorical(y_pred, categories=all_classes).codes
 
+    labels = np.arange(len(all_classes))
+    precision_macro = float(
+        precision_score(y_true_codes, y_pred_codes, average="macro", labels=labels, zero_division=0)
+    )
+    recall_macro = float(recall_score(y_true_codes, y_pred_codes, average="macro", labels=labels, zero_division=0))
+    f1_macro = float(f1_score(y_true_codes, y_pred_codes, average="macro", labels=labels, zero_division=0))
+    balanced_accuracy = recall_macro
+
     return {
         "accuracy": float(accuracy_score(y_true_codes, y_pred_codes)),
-        "balanced_accuracy": float(balanced_accuracy_score(y_true_codes, y_pred_codes)),
-        "precision_macro": float(precision_score(y_true_codes, y_pred_codes, average="macro", zero_division=0)),
-        "recall_macro": float(recall_score(y_true_codes, y_pred_codes, average="macro", zero_division=0)),
-        "f1_macro": float(f1_score(y_true_codes, y_pred_codes, average="macro", zero_division=0)),
+        "balanced_accuracy": balanced_accuracy,
+        "precision_macro": precision_macro,
+        "recall_macro": recall_macro,
+        "f1_macro": f1_macro,
         "mcc": float(matthews_corrcoef(y_true_codes, y_pred_codes)),
         "kappa": float(cohen_kappa_score(y_true_codes, y_pred_codes)),
     }
@@ -169,7 +181,7 @@ def is_categorical(series: pd.Series) -> bool:
         is_object_dtype(series.dtype)
         or is_string_dtype(series.dtype)
         or is_bool_dtype(series.dtype)
-        or is_categorical_dtype(series.dtype)
+        or isinstance(series.dtype, pd.CategoricalDtype)
     )
 
 

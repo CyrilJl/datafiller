@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from pandas.api.types import is_bool_dtype, is_float_dtype, is_integer_dtype, is_object_dtype, is_string_dtype
 from sklearn.base import ClassifierMixin, RegressorMixin
-from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
 from tqdm.auto import tqdm
 
 from .._optimask import optimask
@@ -48,7 +48,7 @@ class MultivariateImputer:
             times. By default, a custom Ridge implementation is used.
         classifier (ClassifierMixin, optional): A scikit-learn compatible
             classifier used for categorical and string targets. Defaults to
-            ``LogisticRegression``.
+            ``DecisionTreeClassifier(max_depth=4)``.
         verbose (int, optional): The verbosity level. Defaults to 0.
         min_samples_train (int, optional): The minimum number of samples
             required to train a model. If, after the imputation, some values
@@ -110,10 +110,10 @@ class MultivariateImputer:
         Args:
             regressor: Regressor used to impute numerical targets. Defaults to ``FastRidge``.
             classifier: Classifier used to impute categorical or string targets.
-                Defaults to ``LogisticRegression``.
+                Defaults to ``DecisionTreeClassifier(max_depth=4)``.
         """
         self.regressor = regressor or FastRidge()
-        self.classifier = classifier or LogisticRegression(max_iter=10000)
+        self.classifier = classifier or DecisionTreeClassifier(max_depth=4)
         self.verbose = int(verbose)
         if min_samples_train is None:
             self.min_samples_train = 1
