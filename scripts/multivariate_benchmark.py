@@ -17,7 +17,12 @@ from sklearn.metrics import (
     recall_score,
 )
 
-from datafiller import MultivariateImputer
+from datafiller import (
+    ExtremeLearningMachine,
+    FastRidge,
+    MultivariateImputer,
+    NonRandomExtremeLearningMachine,
+)
 
 
 SEED = 0
@@ -33,6 +38,13 @@ DATASETS = [
 PATTERNS = [
     ("MAR_0.10", lambda shape, rng: make_mar_mask(shape, 0.10, rng)),
     ("Blocks_0.20x0.30", lambda shape, rng: make_block_mask(shape, 0.30, 0.20, rng)),
+]
+
+REGRESSORS = [
+    ("FastRidge", lambda: FastRidge()),
+    ("ExtremeLearningMachine", lambda: ExtremeLearningMachine()),
+    ("NonRandomELM-Approx", lambda: NonRandomExtremeLearningMachine(method="approx")),
+    ("NonRandomELM-Incremental", lambda: NonRandomExtremeLearningMachine(method="incremental")),
 ]
 
 
@@ -255,54 +267,56 @@ def run_benchmark(seed: int = SEED) -> pd.DataFrame:
             print(f"Skipping dataset '{dataset_name}' because it is empty after dropna().")
             continue
 
-        for pattern_name, mask_fn in PATTERNS:
-            mask = mask_fn(df.shape, rng)
-            df_missing = apply_mask(df, mask)
+        for regressor_name, regressor_factory in REGRESSORS:
+            for pattern_name, mask_fn in PATTERNS:
+                mask = mask_fn(df.shape, rng)
+                df_missing = apply_mask(df, mask)
 
-            imputer = MultivariateImputer(rng=seed)
-            start = time.time()
-            df_imputed = imputer(df_missing)
-            elapsed = time.time() - start
+                imputer = MultivariateImputer(rng=seed, regressor=regressor_factory())
+                start = time.time()
+                df_imputed = imputer(df_missing)
+                elapsed = time.time() - start
 
-            metrics = evaluate(df, df_imputed, mask)
-            numeric_cols = [col for col in df.columns if not is_categorical(df[col])]
-            cat_cols = [col for col in df.columns if is_categorical(df[col])]
-            missing_ratio = float(mask.mean()) if mask.size else 0.0
+                metrics = evaluate(df, df_imputed, mask)
+                numeric_cols = [col for col in df.columns if not is_categorical(df[col])]
+                cat_cols = [col for col in df.columns if is_categorical(df[col])]
+                missing_ratio = float(mask.mean()) if mask.size else 0.0
 
-            rows.append(
-                {
-                    "dataset": dataset_name,
-                    "dataset_kind": dataset_kind,
-                    "pattern": pattern_name,
-                    "rows": len(df),
-                    "cols": df.shape[1],
-                    "numeric_cols": len(numeric_cols),
-                    "categorical_cols": len(cat_cols),
-                    "missing_ratio": missing_ratio,
-                    "masked_total": int(mask.sum()),
-                    "masked_numeric": metrics["masked_numeric"],
-                    "masked_categorical": metrics["masked_categorical"],
-                    "time_seconds": elapsed,
-                    "coverage_numeric": metrics["coverage_numeric"],
-                    "coverage_categorical": metrics["coverage_categorical"],
-                    "rmse": metrics["rmse"],
-                    "mae": metrics["mae"],
-                    "r2": metrics["r2"],
-                    "mape": metrics["mape"],
-                    "smape": metrics["smape"],
-                    "median_ae": metrics["median_ae"],
-                    "bias": metrics["bias"],
-                    "nrmse_range": metrics["nrmse_range"],
-                    "nrmse_std": metrics["nrmse_std"],
-                    "accuracy": metrics["accuracy"],
-                    "balanced_accuracy": metrics["balanced_accuracy"],
-                    "precision_macro": metrics["precision_macro"],
-                    "recall_macro": metrics["recall_macro"],
-                    "f1_macro": metrics["f1_macro"],
-                    "mcc": metrics["mcc"],
-                    "kappa": metrics["kappa"],
-                }
-            )
+                rows.append(
+                    {
+                        "dataset": dataset_name,
+                        "regressor": regressor_name,
+                        "dataset_kind": dataset_kind,
+                        "pattern": pattern_name,
+                        "rows": len(df),
+                        "cols": df.shape[1],
+                        "numeric_cols": len(numeric_cols),
+                        "categorical_cols": len(cat_cols),
+                        "missing_ratio": missing_ratio,
+                        "masked_total": int(mask.sum()),
+                        "masked_numeric": metrics["masked_numeric"],
+                        "masked_categorical": metrics["masked_categorical"],
+                        "time_seconds": elapsed,
+                        "coverage_numeric": metrics["coverage_numeric"],
+                        "coverage_categorical": metrics["coverage_categorical"],
+                        "rmse": metrics["rmse"],
+                        "mae": metrics["mae"],
+                        "r2": metrics["r2"],
+                        "mape": metrics["mape"],
+                        "smape": metrics["smape"],
+                        "median_ae": metrics["median_ae"],
+                        "bias": metrics["bias"],
+                        "nrmse_range": metrics["nrmse_range"],
+                        "nrmse_std": metrics["nrmse_std"],
+                        "accuracy": metrics["accuracy"],
+                        "balanced_accuracy": metrics["balanced_accuracy"],
+                        "precision_macro": metrics["precision_macro"],
+                        "recall_macro": metrics["recall_macro"],
+                        "f1_macro": metrics["f1_macro"],
+                        "mcc": metrics["mcc"],
+                        "kappa": metrics["kappa"],
+                    }
+                )
 
     results = pd.DataFrame(rows)
 

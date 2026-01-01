@@ -43,6 +43,15 @@ Models
       :undoc-members:
       :show-inheritance:
 
+.. admonition:: NonRandomExtremeLearningMachine
+   :class: dropdown
+
+   .. autoclass:: datafiller.NonRandomExtremeLearningMachine
+      :members:
+      :undoc-members:
+      :show-inheritance:
+
+
 ***********************
 Low-Level Functions
 ***********************
