@@ -18,8 +18,8 @@ from ._numba_utils import (
     _subset,
     _subset_one_column,
     _trainable_rows,
-    nan_positions,
     nan_positions_subset,
+    preprocess_matrix,
     unique2d,
 )
 from ._scoring import scoring
@@ -294,6 +294,7 @@ class MultivariateImputer:
         x_imputed: np.ndarray,
         col_to_impute: int,
         mask_nan: np.ndarray,
+        mask_valid: np.ndarray,
         mask_rows_to_impute: np.ndarray,
         iy: np.ndarray,
         ix: np.ndarray,
@@ -312,6 +313,7 @@ class MultivariateImputer:
             x_imputed (np.ndarray): The matrix where imputed values are stored.
             col_to_impute (int): The index of the column to impute.
             mask_nan (np.ndarray): A boolean mask of NaNs for the entire matrix.
+            mask_valid (np.ndarray): A boolean mask of valid (non-NaN) values.
             mask_rows_to_impute (np.ndarray): A boolean mask of rows to be imputed.
             iy (np.ndarray): Row indices of all NaNs.
             ix (np.ndarray): Column indices of all NaNs.
@@ -338,7 +340,6 @@ class MultivariateImputer:
             return  # Cannot impute if no training data is available for this column
 
         mask_trainable_rows = _index_to_mask(trainable_rows, m)
-        mask_valid = ~mask_nan
         patterns, indexes = unique2d(mask_valid[imputable_rows][:, sampled_cols])
 
         pre_iy_trial, pre_ix_trial = nan_positions_subset(
@@ -462,6 +463,8 @@ class MultivariateImputer:
         mask_rows_to_impute = _mask_index_to_impute(size=m, to_impute=rows_to_impute)
         categorical_cols = set(categorical_targets.keys())
 
+        mask_nan, iy, ix, col_sum, col_sumsq, col_count, _ = preprocess_matrix(x)
+
         if normalize:
             if is_df:
                 numeric_cols = []
@@ -474,10 +477,23 @@ class MultivariateImputer:
                 normalize_cols = np.arange(n, dtype=np.int64)
 
             if normalize_cols.size:
-                norm_means = np.nanmean(x[:, normalize_cols], axis=0)
-                norm_scales = np.nanstd(x[:, normalize_cols], axis=0)
-                norm_means = np.where(np.isnan(norm_means), 0.0, norm_means)
-                norm_scales = np.where((norm_scales == 0) | np.isnan(norm_scales), 1.0, norm_scales)
+                col_sum = col_sum[normalize_cols]
+                col_sumsq = col_sumsq[normalize_cols]
+                col_count = col_count[normalize_cols].astype(np.float64)
+                norm_means = np.divide(
+                    col_sum,
+                    col_count,
+                    out=np.zeros_like(col_sum),
+                    where=col_count > 0,
+                )
+                var = np.divide(
+                    col_sumsq,
+                    col_count,
+                    out=np.zeros_like(col_sumsq),
+                    where=col_count > 0,
+                ) - norm_means * norm_means
+                norm_scales = np.sqrt(np.maximum(var, 0.0))
+                norm_scales = np.where(norm_scales == 0, 1.0, norm_scales)
                 x = x.copy()
                 x[:, normalize_cols] = (x[:, normalize_cols] - norm_means) / norm_scales
 
@@ -492,7 +508,7 @@ class MultivariateImputer:
             self.imputation_features_ = None
 
         x_imputed = x.copy()
-        mask_nan, iy, ix = nan_positions(x)
+        mask_valid = ~mask_nan
 
         for i, col in enumerate(tqdm(cols_to_impute, leave=False, disable=(not self.verbose))):
             self._impute_col(
@@ -500,6 +516,7 @@ class MultivariateImputer:
                 x_imputed,
                 col,
                 mask_nan,
+                mask_valid,
                 mask_rows_to_impute,
                 iy,
                 ix,

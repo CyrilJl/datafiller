@@ -36,6 +36,44 @@ def nan_positions(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 
 @njit(boundscheck=False, cache=True)
+def preprocess_matrix(
+    x: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Single-pass preprocessing over a 2D array.
+
+    Computes:
+      - mask of NaNs
+      - global NaN coordinates (iy, ix)
+      - per-column sum, sumsq, count (non-NaN)
+      - per-column NaN count
+    """
+    m, n = x.shape
+    mask_nan = np.zeros((m, n), dtype=np.bool_)
+    iy = np.empty(m * n, dtype=np.uint32)
+    ix = np.empty(m * n, dtype=np.uint32)
+    col_sum = np.zeros(n, dtype=np.float64)
+    col_sumsq = np.zeros(n, dtype=np.float64)
+    col_count = np.zeros(n, dtype=np.uint32)
+    col_nan_count = np.zeros(n, dtype=np.uint32)
+    cnt = 0
+    for i in range(m):
+        for j in range(n):
+            v = x[i, j]
+            if np.isnan(v):
+                mask_nan[i, j] = True
+                iy[cnt] = i
+                ix[cnt] = j
+                cnt += 1
+                col_nan_count[j] += 1
+            else:
+                col_sum[j] += v
+                col_sumsq[j] += v * v
+                col_count[j] += 1
+
+    return mask_nan, iy[:cnt], ix[:cnt], col_sum, col_sumsq, col_count, col_nan_count
+
+
+@njit(boundscheck=False, cache=True)
 def nan_positions_subset(
     iy: np.ndarray,
     ix: np.ndarray,
