@@ -36,7 +36,6 @@ class ExtremeLearningMachine:
         alpha (float): The regularization strength for the FastRidge regressor.
         random_state (int): A seed for the random number generator for
             reproducibility.
-        normalize (bool): If True, standardize features before projection.
     """
 
     def __init__(
@@ -44,16 +43,12 @@ class ExtremeLearningMachine:
         n_features: int = 100,
         alpha: float = 1.0,
         random_state: int = 0,
-        normalize: bool = True,
     ):
         self.n_features = n_features
         self.alpha = alpha
         self.random_state = random_state
-        self.normalize = normalize
         self.projection_ = None
         self.bias_ = None
-        self.mean_ = None
-        self.scale_ = None
         self.ridge_ = FastRidge(alpha=self.alpha)
 
     def _initialize_projection(self, n_input_features: int):
@@ -77,17 +72,7 @@ class ExtremeLearningMachine:
         if self.projection_ is None:
             self._initialize_projection(n_input_features)
 
-        if self.normalize:
-            self.mean_ = X.mean(axis=0).astype(np.float32)
-            scale = X.std(axis=0).astype(np.float32)
-            self.scale_ = np.where(scale == 0, np.float32(1.0), scale).astype(np.float32)
-            X_work = (X - self.mean_) / self.scale_
-        else:
-            self.mean_ = None
-            self.scale_ = None
-            X_work = X
-
-        X_projected = _random_projection_relu(X_work, self.projection_, self.bias_)
+        X_projected = _random_projection_relu(X, self.projection_, self.bias_)
         self.ridge_.fit(X_projected, y)
         return self
 
@@ -101,12 +86,7 @@ class ExtremeLearningMachine:
         Returns:
             np.ndarray: The predicted values.
         """
-        X_work = X
-        if self.normalize:
-            if self.mean_ is None or self.scale_ is None:
-                raise ValueError("Model is not fitted or normalization statistics missing.")
-            X_work = (X - self.mean_) / self.scale_
-        X_projected = _random_projection_relu(X_work, self.projection_, self.bias_)
+        X_projected = _random_projection_relu(X, self.projection_, self.bias_)
         return self.ridge_.predict(X_projected)
 
     def get_params(self, deep: bool = True) -> dict:
@@ -124,7 +104,6 @@ class ExtremeLearningMachine:
             "n_features": self.n_features,
             "alpha": self.alpha,
             "random_state": self.random_state,
-            "normalize": self.normalize,
         }
 
     def set_params(self, **params) -> "ExtremeLearningMachine":
