@@ -393,6 +393,7 @@ class MultivariateImputer:
         rows_to_impute: None | int | Iterable[int] | Iterable[str] = None,
         cols_to_impute: None | int | Iterable[int] | Iterable[str] = None,
         n_nearest_features: None | float | int = None,
+        normalize: bool = True,
     ) -> Union[np.ndarray, pd.DataFrame]:
         """Imputes missing values in the input data.
 
@@ -415,6 +416,9 @@ class MultivariateImputer:
                 imputation. If it's an int, it's the absolute number of
                 features. If it's a float, it's the fraction of features to
                 use. If None, all features are used. Defaults to None.
+            normalize: Whether to normalize numeric columns before imputation,
+                then transform imputed values back to the original scale.
+                Defaults to True.
 
         Returns:
             The imputed data matrix. The return type will match the input type
@@ -428,6 +432,9 @@ class MultivariateImputer:
         original_columns = None
         main_column_indices = None
         original_dtypes = None
+        normalize_cols = None
+        norm_means = None
+        norm_scales = None
 
         if is_df:
             original_index = x.index
@@ -454,6 +461,25 @@ class MultivariateImputer:
         cols_to_impute = _process_to_impute(size=n, to_impute=cols_to_impute)
         mask_rows_to_impute = _mask_index_to_impute(size=m, to_impute=rows_to_impute)
         categorical_cols = set(categorical_targets.keys())
+
+        if normalize:
+            if is_df:
+                numeric_cols = []
+                for i, col in enumerate(original_columns):
+                    dtype = original_dtypes[col]
+                    if is_integer_dtype(dtype) or is_float_dtype(dtype):
+                        numeric_cols.append(main_column_indices[i])
+                normalize_cols = np.array(numeric_cols, dtype=np.int64)
+            else:
+                normalize_cols = np.arange(n, dtype=np.int64)
+
+            if normalize_cols.size:
+                norm_means = np.nanmean(x[:, normalize_cols], axis=0)
+                norm_scales = np.nanstd(x[:, normalize_cols], axis=0)
+                norm_means = np.where(np.isnan(norm_means), 0.0, norm_means)
+                norm_scales = np.where((norm_scales == 0) | np.isnan(norm_scales), 1.0, norm_scales)
+                x = x.copy()
+                x[:, normalize_cols] = (x[:, normalize_cols] - norm_means) / norm_scales
 
         if n_nearest_features is not None:
             if self.scoring == "default":
@@ -482,6 +508,9 @@ class MultivariateImputer:
                 i,
                 categorical_cols,
             )
+
+        if normalize and normalize_cols is not None and normalize_cols.size:
+            x_imputed[:, normalize_cols] = x_imputed[:, normalize_cols] * norm_scales + norm_means
 
         if is_df and self.imputation_features_ is not None:
             assert encoded_feature_names is not None
