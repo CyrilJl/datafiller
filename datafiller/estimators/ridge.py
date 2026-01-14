@@ -14,10 +14,10 @@ class FastRidge:
         alpha (float): The regularization strength. Defaults to 1.0.
         fit_intercept (bool): Whether to calculate the intercept for this model.
             If set to False, no intercept will be used in calculations.
-            Defaults to True.
+            Defaults to False.
     """
 
-    def __init__(self, alpha: float = 1.0, fit_intercept: bool = True):
+    def __init__(self, alpha: float = 1.0, fit_intercept: bool = False):
         self.alpha = alpha
         self.fit_intercept = fit_intercept
         self.coef_ = None

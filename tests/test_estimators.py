@@ -15,7 +15,7 @@ def data():
 
 def test_fast_ridge_fit_predict(data):
     X, y = data
-    ridge = FastRidge(alpha=1.0)
+    ridge = FastRidge(alpha=1.0, fit_intercept=True)
     ridge.fit(X, y)
     preds = ridge.predict(X)
     assert preds.shape == (3,)
