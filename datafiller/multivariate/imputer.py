@@ -48,7 +48,7 @@ class MultivariateImputer:
             times. By default, a custom Ridge implementation is used.
         classifier (ClassifierMixin, optional): A scikit-learn compatible
             classifier used for categorical and string targets. Defaults to
-            ``DecisionTreeClassifier(max_depth=4)``.
+            ``DecisionTreeClassifier(max_depth=4, random_state=rng)``.
         verbose (int, optional): The verbosity level. Defaults to 0.
         min_samples_train (int, optional): The minimum number of samples
             required to train a model. If, after the imputation, some values
@@ -58,7 +58,8 @@ class MultivariateImputer:
             is available.
         rng (int, optional): A seed for the random number generator. This is
             used for reproducible feature sampling when `n_nearest_features`
-            is not None. Defaults to None.
+            is not None, and for the default categorical classifier when one
+            is not provided. Defaults to None.
         scoring (str or callable, optional): The scoring function to use for
             feature selection.
             If 'default', the default scoring function is used.
@@ -110,16 +111,16 @@ class MultivariateImputer:
         Args:
             regressor: Regressor used to impute numerical targets. Defaults to ``FastRidge``.
             classifier: Classifier used to impute categorical or string targets.
-                Defaults to ``DecisionTreeClassifier(max_depth=4)``.
+                Defaults to ``DecisionTreeClassifier(max_depth=4, random_state=rng)``.
         """
         self.regressor = regressor or FastRidge()
-        self.classifier = classifier or DecisionTreeClassifier(max_depth=4)
         self.verbose = int(verbose)
         if min_samples_train is None:
             self.min_samples_train = 1
         else:
             self.min_samples_train = min_samples_train
         self._rng = np.random.RandomState(rng)
+        self.classifier = classifier or DecisionTreeClassifier(max_depth=4, random_state=rng)
         if scoring == "default":
             self.scoring = scoring
         elif callable(scoring):
