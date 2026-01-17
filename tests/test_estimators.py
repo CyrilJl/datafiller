@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 from sklearn.linear_model import Ridge
 
-from datafiller.estimators.ridge import FastRidge
 from datafiller.estimators.elm import ExtremeLearningMachine
+from datafiller.estimators.ridge import FastRidge
 
 
 @pytest.fixture

@@ -1,6 +1,7 @@
+from typing import Union
+
 import numpy as np
 import pandas as pd
-from typing import Union
 
 
 def add_mar(df: pd.DataFrame, nan_ratio: float) -> pd.DataFrame:

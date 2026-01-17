@@ -19,7 +19,6 @@ from sklearn.metrics import (
 
 from datafiller import MultivariateImputer
 
-
 SEED = 0
 
 DATASETS = [

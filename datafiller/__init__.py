@@ -1,9 +1,9 @@
 from importlib.metadata import version
 
+from .estimators.elm import ExtremeLearningMachine
+from .estimators.ridge import FastRidge
 from .multivariate import MultivariateImputer
 from .timeseries import TimeSeriesImputer
-from .estimators.ridge import FastRidge
-from .estimators.elm import ExtremeLearningMachine
 
 __all__ = [
     "MultivariateImputer",

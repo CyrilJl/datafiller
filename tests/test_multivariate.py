@@ -9,7 +9,7 @@ from datafiller.multivariate import MultivariateImputer
 @pytest.fixture
 def nan_array():
     rng = np.random.default_rng(0)
-    n_samples = 9
+    n_samples = 500
     n_features = 10
     mean = np.linspace(0.0, 1.0, n_features)
     cov = np.fromfunction(lambda i, j: 0.5 ** np.abs(i - j), (n_features, n_features))
@@ -75,8 +75,24 @@ def test_multivariate_imputer_rows_to_impute(nan_array):
     assert np.isnan(imputed_array[3, :]).sum() == 0
 
 
+def test_multivariate_imputer_reproducible_numeric(nan_array):
+    imputer1 = MultivariateImputer(rng=0)
+    imputer2 = MultivariateImputer(rng=0)
+    imputed1 = imputer1(nan_array, n_nearest_features=3)
+    imputed2 = imputer2(nan_array, n_nearest_features=3)
+    np.testing.assert_allclose(imputed1, imputed2, equal_nan=True)
+
+
+def test_multivariate_imputer_reproducible_mixed_types(titanic_mixed_df):
+    imputer1 = MultivariateImputer(rng=0)
+    imputer2 = MultivariateImputer(rng=0)
+    imputed1 = imputer1(titanic_mixed_df, n_nearest_features=3)
+    imputed2 = imputer2(titanic_mixed_df, n_nearest_features=3)
+    pd.testing.assert_frame_equal(imputed1, imputed2)
+
+
 def test_multivariate_imputer_min_samples_train(nan_array):
-    imputer = MultivariateImputer(min_samples_train=10)
+    imputer = MultivariateImputer(min_samples_train=nan_array.shape[0] + 1)
     imputed_array = imputer(nan_array)
     # With a high min_samples_train, no imputation should happen
     assert np.isnan(imputed_array).sum() == np.isnan(nan_array).sum()

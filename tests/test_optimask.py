@@ -1,4 +1,5 @@
 import numpy as np
+
 from datafiller._optimask import optimask
 
 

@@ -1,7 +1,6 @@
 from datafiller import ExtremeLearningMachine, MultivariateImputer
 from datafiller.datasets import load_titanic
 
-
 SEED = 0
 
 
