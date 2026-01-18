@@ -151,10 +151,13 @@ class TimeSeriesImputer:
 
         # Create autoregressive features
         df_with_lags = df.copy()
+        shifted_frames = []
         for lag in self.lags:
             shifted = df.shift(lag)
             shifted.columns = [f"{col}_lag_{lag}" for col in original_cols]
-            df_with_lags = pd.concat([df_with_lags, shifted], axis=1)
+            shifted_frames.append(shifted)
+        if shifted_frames:
+            df_with_lags = pd.concat([df_with_lags, *shifted_frames], axis=1)
         df_with_lags = df_with_lags.dropna(how="all", axis=1)
 
         # Process cols_to_impute
