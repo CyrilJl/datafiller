@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datafiller"
-version = "0.2.0"
+version = "0.2.1"
 description = "A python package for easy data imputation"
 readme = "README.md"
 authors = [
@@ -21,11 +21,8 @@ dependencies = [
 [project.optional-dependencies]
 test = [
     "pytest",
-    "pandas",
     "pytest-cov",
-    "codecov",
     "pooch",
-    "pytest-mock",
 ]
 
 [tool.ruff]
