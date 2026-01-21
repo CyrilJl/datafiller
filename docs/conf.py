@@ -29,6 +29,7 @@ html_theme_options = {
         "Algorithm": "algorithm",
         "Benchmarks": "benchmarks",
         "API Reference": "api",
+        "Changelog": "changelog",
     },
     "extra_header_link_icons": {
         "repository on GitHub": {

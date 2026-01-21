@@ -13,3 +13,4 @@
    benchmarks
    algorithm
    api
+   changelog
