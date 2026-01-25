@@ -40,6 +40,9 @@ jobs:
       - name: Run ruff format
         run: ruff format .
 
+      - name: Ruff sort imports
+        run: ruff check --select I --fix .
+
       - name: Commit changes
         if: success()
         run: |
