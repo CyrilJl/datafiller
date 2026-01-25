@@ -6,6 +6,7 @@
 </picture>
 
 [![PyPI version](https://badge.fury.io/py/datafiller.svg)](https://badge.fury.io/py/datafiller)
+[![Conda version](https://anaconda.org/conda-forge/datafiller/badges/version.svg)](https://anaconda.org/conda-forge/datafiller)
 [![Documentation Status](https://readthedocs.org/projects/datafiller/badge/?version=latest)](https://datafiller.readthedocs.io/en/latest/?badge=latest)
 
 
