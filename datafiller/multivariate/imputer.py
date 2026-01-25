@@ -479,7 +479,8 @@ class MultivariateImputer:
                 norm_scales = np.nanstd(x[:, normalize_cols], axis=0)
                 norm_means = np.where(np.isnan(norm_means), 0.0, norm_means)
                 norm_scales = np.where((norm_scales == 0) | np.isnan(norm_scales), 1.0, norm_scales)
-                x = x.copy()
+                if not is_df:
+                    x = x.copy()
                 x[:, normalize_cols] = (x[:, normalize_cols] - norm_means) / norm_scales
 
         if n_nearest_features is not None:
@@ -533,3 +534,4 @@ class MultivariateImputer:
             )
 
         return x_imputed
+

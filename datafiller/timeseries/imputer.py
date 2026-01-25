@@ -150,7 +150,7 @@ class TimeSeriesImputer:
         n_original_cols = len(original_cols)
 
         # Create autoregressive features
-        df_with_lags = df.copy()
+        df_with_lags = df
         shifted_frames = []
         for lag in self.lags:
             shifted = df.shift(lag)
@@ -213,3 +213,4 @@ class TimeSeriesImputer:
         # Return a DataFrame with the same columns as the original
         imputed_df = pd.DataFrame(imputed_data, index=df.index, columns=df_with_lags.columns)
         return imputed_df[original_cols]
+
