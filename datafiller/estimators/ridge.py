@@ -11,13 +11,13 @@ class FastRidge:
     methods for use within the DataFiller.
 
     Args:
-        alpha (float): The regularization strength. Defaults to 1.0.
+        alpha (float): The regularization strength. Defaults to 0.01.
         fit_intercept (bool): Whether to calculate the intercept for this model.
             If set to False, no intercept will be used in calculations.
-            Defaults to False.
+            Defaults to True.
     """
 
-    def __init__(self, alpha: float = 1.0, fit_intercept: bool = False):
+    def __init__(self, alpha: float = 1e-2, fit_intercept: bool = True):
         self.alpha = alpha
         self.fit_intercept = fit_intercept
         self.coef_ = None
