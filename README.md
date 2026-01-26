@@ -26,10 +26,14 @@ Key features include model-based imputation with lightweight models, mixed data 
 
 ## Installation
 
-Install DataFiller using pip:
+Install DataFiller using pip or conda:
 
 ```bash
 pip install datafiller
+```
+
+```bash
+conda install -c conda-forge datafiller
 ```
 
 ## Basic Usage
