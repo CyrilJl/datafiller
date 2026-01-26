@@ -325,8 +325,11 @@ class MultivariateImputer:
         """
         m, n = x.shape
 
-        imputable_rows = _imputable_rows(mask_nan=mask_nan, col=col_to_impute, mask_rows_to_impute=mask_rows_to_impute)
-        if not len(imputable_rows):
+        if not (
+            imputable_rows := _imputable_rows(
+                mask_nan=mask_nan, col=col_to_impute, mask_rows_to_impute=mask_rows_to_impute
+            )
+        ).size:
             return
 
         sampled_cols = self._get_sampled_cols(n, col_to_impute, n_nearest_features, scores, scores_index)
@@ -334,8 +337,7 @@ class MultivariateImputer:
         if self.imputation_features_ is not None:
             self.imputation_features_[col_to_impute] = sampled_cols
 
-        trainable_rows = _trainable_rows(mask_nan=mask_nan, col=col_to_impute)
-        if not len(trainable_rows):
+        if not (trainable_rows := _trainable_rows(mask_nan=mask_nan, col=col_to_impute)).size:
             return  # Cannot impute if no training data is available for this column
 
         mask_trainable_rows = _index_to_mask(trainable_rows, m)
@@ -374,8 +376,7 @@ class MultivariateImputer:
                 y_train = _subset_one_column(X=x, rows=rows, col=col_to_impute)
                 is_categorical_target = col_to_impute in categorical_cols
                 if is_categorical_target:
-                    unique_y = np.unique(y_train)
-                    if len(unique_y) < 2:
+                    if (unique_y := np.unique(y_train)).size < 2:
                         x_imputed[index_predict, col_to_impute] = unique_y[0]
                         continue
                     estimator = self.classifier

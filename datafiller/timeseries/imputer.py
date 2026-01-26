@@ -185,13 +185,10 @@ class TimeSeriesImputer:
                 rows_to_impute = [rows_to_impute]
         elif rows_to_impute is None:
             if before is not None or after is not None:
-                before_timestamp = pd.to_datetime(str(before)) if before is not None else None
-                after_timestamp = pd.to_datetime(str(after)) if after is not None else None
-
                 mask = pd.Series(True, index=df.index)
-                if before_timestamp:
+                if before is not None and (before_timestamp := pd.to_datetime(str(before))):
                     mask &= df.index < before_timestamp
-                if after_timestamp:
+                if after is not None and (after_timestamp := pd.to_datetime(str(after))):
                     mask &= df.index > after_timestamp
                 rows_to_impute = np.where(mask)[0]
 
