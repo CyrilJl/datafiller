@@ -22,7 +22,7 @@ DataFiller is a pragmatic imputation tool: it is unlikely to match the absolute 
 
 ## Key Features
 
-Key features include model-based imputation with lightweight models, mixed data support with one-hot encoding and label recovery, a dedicated ``TimeSeriesImputer`` with lag/lead features, performance-critical sections accelerated by Numba, smart feature selection for training subsets, and scikit-learn compatibility.
+Key features include model-based imputation with lightweight models, mixed data support with one-hot encoding and label recovery, support for NumPy arrays plus pandas and polars DataFrames, a dedicated ``TimeSeriesImputer`` with lag/lead features, performance-critical sections accelerated by Numba, smart feature selection for training subsets, and scikit-learn compatibility.
 
 ## Installation
 
@@ -34,6 +34,12 @@ pip install datafiller
 
 ```bash
 conda install -c conda-forge datafiller
+```
+
+Optional dependency for polars support:
+
+```bash
+pip install polars
 ```
 
 ## Basic Usage

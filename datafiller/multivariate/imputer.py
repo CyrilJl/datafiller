@@ -30,6 +30,39 @@ from ._utils import (
     _validate_input,
 )
 
+try:  # Optional dependency for DataFrame support
+    import polars as pl
+except ModuleNotFoundError:  # pragma: no cover - exercised when polars is unavailable
+    pl = None
+
+
+def _is_polars_dataframe(value: object) -> bool:
+    return pl is not None and isinstance(value, pl.DataFrame)
+
+
+def _polars_to_pandas(df):
+    try:
+        return df.to_pandas(use_pyarrow_extension_array=False)
+    except TypeError:
+        return df.to_pandas()
+
+
+def _pandas_to_polars(df: pd.DataFrame, schema):
+    polars_df = pl.from_pandas(df)
+    if schema is None:
+        return polars_df
+    for name, dtype in schema.items():
+        if name not in polars_df.columns:
+            continue
+        try:
+            polars_df = polars_df.with_columns(pl.col(name).cast(dtype))
+        except Exception:
+            try:
+                polars_df = polars_df.with_columns(pl.col(name).cast(dtype, strict=False))
+            except Exception:
+                continue
+    return polars_df
+
 
 class MultivariateImputer:
     """Imputes missing values in a 2D numpy array.
@@ -37,10 +70,10 @@ class MultivariateImputer:
     This class uses a model-based approach to fill in missing values, where
     each feature with missing values is predicted using other features in the
     dataset. It is designed to be efficient, using Numba for critical parts
-    and finding optimal data subsets for model training. When a pandas
-    DataFrame contains categorical, string, or boolean columns, they are
-    one-hot encoded internally and imputed with a classifier before returning
-    the original column layout.
+    and finding optimal data subsets for model training. When a pandas or
+    polars DataFrame contains categorical, string, or boolean columns, they
+    are one-hot encoded internally and imputed with a classifier before
+    returning the original column layout.
 
     Args:
         regressor (RegressorMixin, optional): A scikit-learn compatible
@@ -74,8 +107,8 @@ class MultivariateImputer:
         imputation_features_ (dict or None): A dictionary mapping each imputed
             column to the features used to impute it. This attribute is only
             populated when `n_nearest_features` is not None. If the input is a
-            pandas DataFrame, the keys and values will be column names. If the
-            input is a NumPy array, they will be integer indices.
+            pandas or polars DataFrame, the keys and values will be column
+            names. If the input is a NumPy array, they will be integer indices.
 
     Examples:
         .. code-block:: python
@@ -289,6 +322,24 @@ class MultivariateImputer:
 
         return pd.DataFrame(data, index=original_index, columns=original_columns)
 
+    def _impute_polars_dataframe(
+        self,
+        df,
+        rows_to_impute: None | int | Iterable[int] | Iterable[str] = None,
+        cols_to_impute: None | int | Iterable[int] | Iterable[str] = None,
+        n_nearest_features: None | float | int = None,
+        normalize: bool = True,
+    ):
+        pandas_df = _polars_to_pandas(df)
+        imputed_df = self(
+            pandas_df,
+            rows_to_impute=rows_to_impute,
+            cols_to_impute=cols_to_impute,
+            n_nearest_features=n_nearest_features,
+            normalize=normalize,
+        )
+        return _pandas_to_polars(imputed_df, df.schema)
+
     def _impute_col(
         self,
         x: np.ndarray,
@@ -391,28 +442,30 @@ class MultivariateImputer:
 
     def __call__(
         self,
-        x: Union[np.ndarray, pd.DataFrame],
+        x: Union[np.ndarray, pd.DataFrame, "pl.DataFrame"],
         rows_to_impute: None | int | Iterable[int] | Iterable[str] = None,
         cols_to_impute: None | int | Iterable[int] | Iterable[str] = None,
         n_nearest_features: None | float | int = None,
         normalize: bool = True,
-    ) -> Union[np.ndarray, pd.DataFrame]:
+    ) -> Union[np.ndarray, pd.DataFrame, "pl.DataFrame"]:
         """Imputes missing values in the input data.
 
-        The method can handle both NumPy arrays and pandas DataFrames.
+        The method can handle NumPy arrays, pandas DataFrames, and polars DataFrames.
 
         Args:
             x: The input data matrix with missing values (NaNs).
-                Can be a numpy array or a pandas DataFrame.
+                Can be a numpy array, pandas DataFrame, or polars DataFrame.
             rows_to_impute: The rows to impute. The interpretation of this
                 argument depends on the type of `x`.
                 - If `x` is a NumPy array, this must be a list of integer indices.
                 - If `x` is a pandas DataFrame, this must be a list of index labels.
+                - If `x` is a polars DataFrame, this must be a list of row indices.
                 If None, all rows are considered for imputation. Defaults to None.
             cols_to_impute: The columns to impute. The interpretation of this
                 argument depends on the type of `x`.
                 - If `x` is a NumPy array, this must be a list of integer indices.
                 - If `x` is a pandas DataFrame, this must be a list of column labels.
+                - If `x` is a polars DataFrame, this must be a list of column labels.
                 If None, all columns are considered for imputation. Defaults to None.
             n_nearest_features: The number of features to use for
                 imputation. If it's an int, it's the absolute number of
@@ -426,6 +479,15 @@ class MultivariateImputer:
             The imputed data matrix. The return type will match the input type
             (NumPy array or pandas DataFrame).
         """
+        if _is_polars_dataframe(x):
+            return self._impute_polars_dataframe(
+                x,
+                rows_to_impute=rows_to_impute,
+                cols_to_impute=cols_to_impute,
+                n_nearest_features=n_nearest_features,
+                normalize=normalize,
+            )
+
         is_df = isinstance(x, pd.DataFrame)
         categorical_targets: dict[int, list] = {}
         encoded_feature_names: list[str] | None = None
