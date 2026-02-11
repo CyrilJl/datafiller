@@ -238,4 +238,3 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         # Return a DataFrame with the same columns as the original
         imputed_df = pd.DataFrame(imputed_data, index=df.index, columns=df_with_lags.columns)
         return imputed_df[original_cols]
-
