@@ -5,7 +5,7 @@ from typing import Iterable, Union
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_bool_dtype, is_float_dtype, is_integer_dtype, is_object_dtype, is_string_dtype
-from sklearn.base import ClassifierMixin, RegressorMixin
+from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin
 from sklearn.tree import DecisionTreeClassifier
 from tqdm.auto import tqdm
 
@@ -31,7 +31,7 @@ from ._utils import (
 )
 
 
-class MultivariateImputer:
+class MultivariateImputer(BaseEstimator, TransformerMixin):
     """Imputes missing values in a 2D numpy array.
 
     This class uses a model-based approach to fill in missing values, where
@@ -113,13 +113,16 @@ class MultivariateImputer:
             classifier: Classifier used to impute categorical or string targets.
                 Defaults to ``DecisionTreeClassifier(max_depth=4, random_state=rng)``.
         """
+        self._regressor_default = regressor is None
         self.regressor = regressor or FastRidge()
         self.verbose = int(verbose)
         if min_samples_train is None:
             self.min_samples_train = 1
         else:
             self.min_samples_train = min_samples_train
+        self.rng = rng
         self._rng = np.random.RandomState(rng)
+        self._classifier_default = classifier is None
         self.classifier = classifier or DecisionTreeClassifier(max_depth=4, random_state=rng)
         if scoring == "default":
             self.scoring = scoring
@@ -128,6 +131,39 @@ class MultivariateImputer:
         else:
             raise ValueError("`scoring` must be 'default' or a callable.")
         self.imputation_features_ = None
+
+    def fit(self, X: Union[np.ndarray, pd.DataFrame], y: None = None) -> "MultivariateImputer":
+        """No-op fit for sklearn compatibility."""
+        return self
+
+    def transform(self, X: Union[np.ndarray, pd.DataFrame]) -> Union[np.ndarray, pd.DataFrame]:
+        """Impute missing values in X using stored configuration."""
+        return self(X)
+
+    def set_params(self, **params) -> "MultivariateImputer":
+        """Set parameters and refresh derived attributes."""
+        classifier_param = params.get("classifier", None) if "classifier" in params else None
+        regressor_param = params.get("regressor", None) if "regressor" in params else None
+        rng_changed = "rng" in params
+
+        super().set_params(**params)
+
+        if "classifier" in params:
+            self._classifier_default = classifier_param is None
+            if self._classifier_default:
+                self.classifier = DecisionTreeClassifier(max_depth=4, random_state=self.rng)
+
+        if "regressor" in params:
+            self._regressor_default = regressor_param is None
+            if self._regressor_default:
+                self.regressor = FastRidge()
+
+        if rng_changed:
+            self._rng = np.random.RandomState(self.rng)
+            if self._classifier_default:
+                self.classifier = DecisionTreeClassifier(max_depth=4, random_state=self.rng)
+
+        return self
 
     @np.errstate(all="ignore")
     def _get_sampled_cols(
@@ -535,4 +571,3 @@ class MultivariateImputer:
             )
 
         return x_imputed
-

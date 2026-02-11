@@ -2,13 +2,13 @@ from typing import Iterable, Union
 
 import numpy as np
 import pandas as pd
-from sklearn.base import ClassifierMixin, RegressorMixin
+from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin
 
 from ..multivariate.imputer import MultivariateImputer
 from ._utils import interpolate_small_gaps
 
 
-class TimeSeriesImputer:
+class TimeSeriesImputer(BaseEstimator, TransformerMixin):
     """Imputes missing values in time series data.
 
     This class wraps the :class:`MultivariateImputer` to specifically handle
@@ -83,18 +83,46 @@ class TimeSeriesImputer:
         if 0 in lags:
             raise ValueError("lags cannot contain 0.")
         self.lags = lags
+        self.regressor = regressor
+        self.classifier = classifier
+        self.min_samples_train = min_samples_train
+        self.rng = rng
+        self.verbose = verbose
+        self.scoring = scoring
         self.interpolate_gaps_less_than = interpolate_gaps_less_than
-        if min_samples_train is None:
-            min_samples_train = 1
-        self.multivariate_imputer = MultivariateImputer(
-            regressor=regressor,
-            classifier=classifier,
-            verbose=verbose,
-            min_samples_train=min_samples_train,
-            rng=rng,
-            scoring=scoring,
-        )
+        self._build_multivariate_imputer()
         self.imputation_features_ = None
+
+    def _build_multivariate_imputer(self) -> None:
+        min_samples_train = 1 if self.min_samples_train is None else self.min_samples_train
+        self.multivariate_imputer = MultivariateImputer(
+            regressor=self.regressor,
+            classifier=self.classifier,
+            verbose=self.verbose,
+            min_samples_train=min_samples_train,
+            rng=self.rng,
+            scoring=self.scoring,
+        )
+
+    def fit(self, X: pd.DataFrame, y: None = None) -> "TimeSeriesImputer":
+        """No-op fit for sklearn compatibility."""
+        return self
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Impute missing values in X using stored configuration."""
+        return self(X)
+
+    def set_params(self, **params) -> "TimeSeriesImputer":
+        """Set parameters and refresh dependent objects."""
+        rebuild_keys = {"regressor", "classifier", "min_samples_train", "rng", "verbose", "scoring"}
+        rebuild = any(key in params for key in rebuild_keys)
+
+        super().set_params(**params)
+
+        if rebuild:
+            self._build_multivariate_imputer()
+
+        return self
 
     def __call__(
         self,
@@ -210,4 +238,3 @@ class TimeSeriesImputer:
         # Return a DataFrame with the same columns as the original
         imputed_df = pd.DataFrame(imputed_data, index=df.index, columns=df_with_lags.columns)
         return imputed_df[original_cols]
-
