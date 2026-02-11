@@ -1,6 +1,13 @@
 Changelog
 =========
 
+v0.2.2 (2026-02-11)
+-------------------
+
+- Added scikit-learn transformer compatibility for MultivariateImputer and TimeSeriesImputer.
+- Ensured TimeSeriesImputer parameter updates propagate to its internal MultivariateImputer.
+- Added pipeline-focused tests for both imputers.
+
 v0.2.1 (2026-01-21)
 -------------------
 
