@@ -107,6 +107,6 @@ df_imputed = imputer(df)
 
 ## How It Works
 
-DataFiller uses a model-based imputation strategy. For each column containing missing values, it trains a model using the other columns as features. Categorical, boolean, and string columns are one-hot encoded for feature construction, so they can drive the imputation of numerical targets, and are imputed with a classifier before being mapped back to the original labels. The rows used for training are carefully selected to be the largest, most complete rectangular subset of the data, which is found using the ``optimask`` algorithm. This ensures that the training data is of the highest possible quality, leading to more accurate imputations.
+DataFiller uses a model-based imputation strategy. For each column containing missing values, it trains a model using the other columns as features. Categorical, boolean, and string columns are one-hot encoded for feature construction, so they can drive the imputation of numerical targets, and are imputed with a classifier before being mapped back to the original labels. The rows used for training are carefully selected to be the largest, most complete rectangular subset of the data, which is found using the [optimask](https://github.com/CyrilJl/OptiMask) algorithm. This ensures that the training data is of the highest possible quality, leading to more accurate imputations.
 
 For more details, see the [documentation](https://datafiller.readthedocs.io/).
