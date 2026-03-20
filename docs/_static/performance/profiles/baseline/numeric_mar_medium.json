@@ -1,0 +1,13 @@
+{
+  "git_branch": "main",
+  "git_commit": "8cd0aae",
+  "benchmark": "numeric_mar_medium",
+  "description": "5000x25 float32 array with 8% MAR missingness.",
+  "elapsed_seconds": 11.678491499973461,
+  "peak_memory_mb": 3.067612648010254,
+  "rmse": 0.5515878796577454,
+  "mae": 0.4296626150608063,
+  "accuracy": NaN,
+  "coverage": 1.0,
+  "remaining_missing_total": 0
+}

@@ -1,0 +1,51 @@
+Benchmark: numeric_mar_medium
+Description: 5000x25 float32 array with 8% MAR missingness.
+Branch: main
+Commit: 8cd0aae
+Elapsed seconds: 11.678491
+Peak tracemalloc memory (MiB): 3.068
+Coverage: 1.0
+RMSE: 0.5515878796577454
+MAE: 0.4296626150608063
+Accuracy: nan
+Remaining missing total: 0
+
+Top cProfile rows:
+         645315 function calls in 11.578 seconds
+
+   Ordered by: cumulative time
+   List reduced from 157 to 15 due to restriction <15>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+       25    2.505    0.100   11.230    0.449 C:\Users\jolyc\Python\datafiller\datafiller\multivariate\imputer.py:328(_impute_col)
+        1    0.000    0.000    8.432    8.432 C:\Users\jolyc\miniforge3\Lib\threading.py:641(wait)
+        1    0.001    0.001    8.431    8.431 C:\Users\jolyc\Python\datafiller\datafiller\multivariate\imputer.py:428(__call__)
+     5964    1.163    0.000    4.470    0.001 C:\Users\jolyc\Python\datafiller\datafiller\estimators\ridge.py:26(fit)
+     5964    2.842    0.000    4.282    0.001 C:\Users\jolyc\Python\datafiller\datafiller\_optimask.py:188(optimask)
+    11928    0.040    0.000    1.425    0.000 {method 'mean' of 'numpy.ndarray' objects}
+    11928    0.641    0.000    1.385    0.000 C:\Users\jolyc\miniforge3\Lib\site-packages\numpy\_core\_methods.py:115(_mean)
+     5964    0.116    0.000    1.054    0.000 C:\Users\jolyc\miniforge3\Lib\site-packages\numpy\lib\_index_tricks_impl.py:997(diag_indices_from)
+     5964    0.358    0.000    0.728    0.000 C:\Users\jolyc\miniforge3\Lib\site-packages\numpy\linalg\_linalg.py:363(solve)
+     5964    0.630    0.000    0.717    0.000 C:\Users\jolyc\miniforge3\Lib\site-packages\numpy\lib\_function_base_impl.py:1402(diff)
+    17900    0.511    0.000    0.511    0.000 {method 'reduce' of 'numpy.ufunc' objects}
+     5989    0.479    0.000    0.479    0.000 {method 'argsort' of 'numpy.ndarray' objects}
+     5964    0.228    0.000    0.354    0.000 C:\Users\jolyc\Python\datafiller\datafiller\_optimask.py:167(_get_largest_rectangle)
+     5964    0.350    0.000    0.350    0.000 C:\Users\jolyc\Python\datafiller\datafiller\_optimask.py:112(apply_permutation)
+    35784    0.293    0.000    0.293    0.000 {method 'astype' of 'numpy.ndarray' objects}
+
+Top tracemalloc rows:
+x_imputed = x.copy() | size=0.477 MiB | count=2
+return bound(*args, **kwds) | size=0.002 MiB | count=35
+profile.enable() | size=0.001 MiB | count=25
+profile.disable() | size=0.001 MiB | count=14
+return min(set(range(len(positions) + 1)).difference(positions)) | size=0.001 MiB | count=9
+x_struct = np.ascontiguousarray(x).view(np.dtype((np.void, x.dtype.itemsize * x.shape[1]))) | size=0.001 MiB | count=9
+lock.release() | size=0.001 MiB | count=8
+lock.acquire(*a, **k) | size=0.001 MiB | count=8
+return wrap(r.astype(result_t, copy=False)) | size=0.000 MiB | count=7
+_extobj_contextvar.reset(self._token) | size=0.000 MiB | count=6
+def _numba_unpickle(address, bytedata, hashed): | size=0.000 MiB | count=6
+waiter = _allocate_lock() | size=0.000 MiB | count=5
+ar = np.asanyarray(ar).flatten() | size=0.000 MiB | count=5
+usable_cols = sampled_cols[patterns[k]].astype(np.uint32) | size=0.000 MiB | count=5
+def __iter__(self): | size=0.000 MiB | count=5

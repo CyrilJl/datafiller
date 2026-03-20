@@ -11,6 +11,7 @@
 
    how_to_use
    benchmarks
+   performance
    algorithm
    api
    changelog

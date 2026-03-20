@@ -1,0 +1,13 @@
+{
+  "git_branch": "main",
+  "git_commit": "8cd0aae",
+  "benchmark": "mixed_dataframe_mar",
+  "description": "4000-row mixed dataframe with numeric, categorical, string, and boolean columns.",
+  "elapsed_seconds": 3.988848999957554,
+  "peak_memory_mb": 2.1585283279418945,
+  "rmse": 7914.160750183523,
+  "mae": 2758.2522052298677,
+  "accuracy": 0.9467238211879976,
+  "coverage": 1.0,
+  "remaining_missing_total": 0
+}
