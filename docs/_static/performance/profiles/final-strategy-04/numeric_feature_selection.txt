@@ -1,0 +1,51 @@
+Benchmark: numeric_feature_selection
+Description: 3500x80 float32 array with 8% MAR and sampled nearest features.
+Branch: perf/final-report
+Commit: 45e4ed9
+Elapsed seconds: 6.830870
+Peak tracemalloc memory (MiB): 6.820
+Coverage: 1.0
+RMSE: 0.5035240054130554
+MAE: 0.39667215943336487
+Accuracy: nan
+Remaining missing total: 0
+
+Top cProfile rows:
+         496109 function calls (496108 primitive calls) in 6.893 seconds
+
+   Ordered by: cumulative time
+   List reduced from 171 to 15 due to restriction <15>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.094    0.094    6.830    6.830 C:\Users\jolyc\Python\datafiller\datafiller\multivariate\imputer.py:428(__call__)
+       80    1.693    0.021    6.719    0.084 C:\Users\jolyc\Python\datafiller\datafiller\multivariate\imputer.py:328(_impute_col)
+     5242    0.787    0.000    2.523    0.000 C:\Users\jolyc\Python\datafiller\datafiller\estimators\ridge.py:26(fit)
+     5242    1.508    0.000    2.261    0.000 C:\Users\jolyc\Python\datafiller\datafiller\_optimask.py:188(optimask)
+    10484    0.033    0.000    1.124    0.000 {method 'mean' of 'numpy.ndarray' objects}
+    10485    0.529    0.000    1.092    0.000 C:\Users\jolyc\miniforge3\Lib\site-packages\numpy\_core\_methods.py:115(_mean)
+     5242    0.286    0.000    0.590    0.000 C:\Users\jolyc\miniforge3\Lib\site-packages\numpy\linalg\_linalg.py:363(solve)
+    10738    0.316    0.000    0.316    0.000 {method 'reduce' of 'numpy.ufunc' objects}
+     5242    0.180    0.000    0.280    0.000 C:\Users\jolyc\Python\datafiller\datafiller\_optimask.py:167(_get_largest_rectangle)
+     5489    0.248    0.000    0.248    0.000 {method 'argsort' of 'numpy.ndarray' objects}
+    10486    0.171    0.000    0.179    0.000 C:\Users\jolyc\miniforge3\Lib\site-packages\numpy\_core\_methods.py:73(_count_reduce_items)
+    15727    0.133    0.000    0.133    0.000 {method 'astype' of 'numpy.ndarray' objects}
+    37351    0.104    0.000    0.104    0.000 {built-in method builtins.len}
+     5246    0.042    0.000    0.102    0.000 C:\Users\jolyc\miniforge3\Lib\site-packages\numpy\_core\_ufunc_config.py:472(__enter__)
+     5242    0.074    0.000    0.084    0.000 C:\Users\jolyc\Python\datafiller\datafiller\estimators\ridge.py:62(predict)
+
+Top tracemalloc rows:
+x_imputed = x.copy() | size=1.068 MiB | count=2
+a = asanyarray(a).copy(order="K") | size=0.015 MiB | count=162
+return bound(*args, **kwds) | size=0.002 MiB | count=43
+self.imputation_features_[col_to_impute] = sampled_cols | size=0.002 MiB | count=1
+for obj in iterable: | size=0.002 MiB | count=80
+sampled_cols = self._rng.choice( | size=0.001 MiB | count=65
+profile.enable() | size=0.001 MiB | count=18
+return min(set(range(len(positions) + 1)).difference(positions)) | size=0.001 MiB | count=9
+lock.acquire(*a, **k) | size=0.001 MiB | count=8
+x_struct = np.ascontiguousarray(x).view(np.dtype((np.void, x.dtype.itemsize * x.shape[1]))) | size=0.000 MiB | count=8
+lock.release() | size=0.000 MiB | count=7
+return wrap(r.astype(result_t, copy=False)) | size=0.000 MiB | count=7
+_extobj_contextvar.reset(self._token) | size=0.000 MiB | count=6
+def _numba_unpickle(address, bytedata, hashed): | size=0.000 MiB | count=6
+waiter = _allocate_lock() | size=0.000 MiB | count=5

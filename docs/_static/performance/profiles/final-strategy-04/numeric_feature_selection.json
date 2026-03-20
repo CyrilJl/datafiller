@@ -1,0 +1,13 @@
+{
+  "git_branch": "perf/final-report",
+  "git_commit": "45e4ed9",
+  "benchmark": "numeric_feature_selection",
+  "description": "3500x80 float32 array with 8% MAR and sampled nearest features.",
+  "elapsed_seconds": 6.830869699944742,
+  "peak_memory_mb": 6.820320129394531,
+  "rmse": 0.5035240054130554,
+  "mae": 0.39667215943336487,
+  "accuracy": NaN,
+  "coverage": 1.0,
+  "remaining_missing_total": 0
+}

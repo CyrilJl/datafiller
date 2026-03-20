@@ -35,7 +35,7 @@ def _dataframe_rows_to_impute_to_indices(rows_to_impute, index):
     )
 
     if np.any((indexer := index.get_indexer(to_impute_list)) == -1):
-        missing = [l for l, i in zip(to_impute_list, indexer) if i == -1]
+        missing = [label for label, i in zip(to_impute_list, indexer) if i == -1]
         raise ValueError(f"Row labels not found in index: {missing}")
     return indexer
 
@@ -52,7 +52,7 @@ def _dataframe_cols_to_impute_to_indices(cols_to_impute, columns):
     )
 
     if np.any((indexer := columns.get_indexer(to_impute_list)) == -1):
-        missing = [l for l, i in zip(to_impute_list, indexer) if i == -1]
+        missing = [label for label, i in zip(to_impute_list, indexer) if i == -1]
         raise ValueError(f"Column labels not found in columns: {missing}")
     return indexer
 

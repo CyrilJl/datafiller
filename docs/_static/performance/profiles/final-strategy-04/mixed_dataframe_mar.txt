@@ -1,0 +1,51 @@
+Benchmark: mixed_dataframe_mar
+Description: 4000-row mixed dataframe with numeric, categorical, string, and boolean columns.
+Branch: perf/final-report
+Commit: 45e4ed9
+Elapsed seconds: 3.150958
+Peak tracemalloc memory (MiB): 2.032
+Coverage: 1.0
+RMSE: 7914.160750183523
+MAE: 2758.2522052298677
+Accuracy: 0.9467238211879976
+Remaining missing total: 0
+
+Top cProfile rows:
+         342054 function calls (341330 primitive calls) in 3.149 seconds
+
+   Ordered by: cumulative time
+   List reduced from 852 to 15 due to restriction <15>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.002    0.002    3.151    3.151 C:\Users\jolyc\Python\datafiller\datafiller\multivariate\imputer.py:428(__call__)
+        9    0.151    0.017    2.996    0.333 C:\Users\jolyc\Python\datafiller\datafiller\multivariate\imputer.py:328(_impute_col)
+      184    0.004    0.000    2.315    0.013 C:\Users\jolyc\miniforge3\Lib\site-packages\sklearn\base.py:1319(wrapper)
+      184    0.006    0.000    1.932    0.011 C:\Users\jolyc\miniforge3\Lib\site-packages\sklearn\tree\_classes.py:996(fit)
+      184    0.633    0.003    1.926    0.010 C:\Users\jolyc\miniforge3\Lib\site-packages\sklearn\tree\_classes.py:234(_fit)
+      184    0.267    0.001    0.630    0.003 C:\Users\jolyc\miniforge3\Lib\site-packages\sklearn\utils\validation.py:1439(check_random_state)
+      462    0.002    0.000    0.437    0.001 C:\Users\jolyc\miniforge3\Lib\inspect.py:3384(signature)
+      462    0.001    0.000    0.435    0.001 C:\Users\jolyc\miniforge3\Lib\inspect.py:3105(from_callable)
+      462    0.029    0.000    0.434    0.001 C:\Users\jolyc\miniforge3\Lib\inspect.py:2498(_signature_from_callable)
+      462    0.177    0.000    0.393    0.001 C:\Users\jolyc\miniforge3\Lib\inspect.py:2394(_signature_from_function)
+      184    0.001    0.000    0.367    0.002 C:\Users\jolyc\miniforge3\Lib\site-packages\sklearn\base.py:484(_validate_params)
+      193    0.355    0.002    0.358    0.002 C:\Users\jolyc\miniforge3\Lib\site-packages\numpy\_core\_ufunc_config.py:496(inner)
+      184    0.002    0.000    0.351    0.002 C:\Users\jolyc\miniforge3\Lib\site-packages\sklearn\utils\multiclass.py:201(check_classification_targets)
+      920    0.125    0.000    0.282    0.000 C:\Users\jolyc\miniforge3\Lib\site-packages\sklearn\utils\validation.py:725(check_array)
+      184    0.020    0.000    0.271    0.001 C:\Users\jolyc\miniforge3\Lib\site-packages\sklearn\utils\multiclass.py:240(type_of_target)
+
+Top tracemalloc rows:
+stacked = np.empty(shape, dtype=dtype) | size=0.153 MiB | count=4
+values = values.copy() | size=0.038 MiB | count=6
+return (conv.wrap(hash_unique),) | size=0.012 MiB | count=269
+return np.array(obj, copy=copy, dtype=dtype, **kwargs)  # pyright: ignore | size=0.007 MiB | count=149
+data = self._data.copy() | size=0.004 MiB | count=3
+mask = self._mask.copy() | size=0.004 MiB | count=2
+return bound(*args, **kwds) | size=0.003 MiB | count=51
+return np.where(cond, left_op, right_op) | size=0.002 MiB | count=97
+applied = getattr(b, f)(**kwargs) | size=0.002 MiB | count=19
+@property | size=0.001 MiB | count=25
+dtypes = [blk.dtype for blk in self.blocks if blk._can_consolidate] | size=0.001 MiB | count=5
+block_type(x[1], placement=BlockPlacement(x[0]), ndim=2) | size=0.001 MiB | count=21
+@property | size=0.001 MiB | count=21
+nb = type(block)( | size=0.001 MiB | count=14
+def __eq__(self, other: object) -> bool: | size=0.001 MiB | count=17
