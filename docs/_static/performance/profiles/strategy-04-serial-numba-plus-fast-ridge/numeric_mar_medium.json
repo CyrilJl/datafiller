@@ -1,0 +1,13 @@
+{
+  "git_branch": "perf/strategy-04-serial-numba-plus-fast-ridge",
+  "git_commit": "da00d4f",
+  "benchmark": "numeric_mar_medium",
+  "description": "5000x25 float32 array with 8% MAR missingness.",
+  "elapsed_seconds": 7.1016826999839395,
+  "peak_memory_mb": 3.0664281845092773,
+  "rmse": 0.5515878796577454,
+  "mae": 0.4296626150608063,
+  "accuracy": NaN,
+  "coverage": 1.0,
+  "remaining_missing_total": 0
+}

@@ -34,18 +34,24 @@ class FastRidge:
         Returns:
             self: The fitted regressor.
         """
-        X = X.astype(np.float32)
-        y = y.astype(np.float32)
+        X = np.asarray(X, dtype=np.float32)
+        y = np.asarray(y, dtype=np.float32)
 
         if self.fit_intercept:
             X_mean = X.mean(axis=0)
             y_mean = y.mean()
-            X = X - X_mean
-            y = y - y_mean
+            X_work = X - X_mean
+            y_work = y - y_mean
+        else:
+            X_work = X
+            y_work = y
+            X_mean = None
+            y_mean = np.float32(0.0)
 
-        A = X.T @ X
-        A[np.diag_indices_from(A)] += self.alpha
-        self.coef_ = np.linalg.solve(A, X.T @ y)
+        Xt = X_work.T
+        A = Xt @ X_work
+        A.flat[:: A.shape[0] + 1] += self.alpha
+        self.coef_ = np.linalg.solve(A, Xt @ y_work)
 
         if self.fit_intercept:
             self.intercept_ = y_mean - (X_mean @ self.coef_)
@@ -63,5 +69,5 @@ class FastRidge:
         Returns:
             np.ndarray: The predicted values.
         """
-        X = X.astype(np.float32)
+        X = np.asarray(X, dtype=np.float32)
         return X @ self.coef_ + self.intercept_
