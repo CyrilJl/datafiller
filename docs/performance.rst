@@ -6,10 +6,10 @@ Performance
 This page tracks the repeatable benchmarking and profiling workflow used to optimize ``MultivariateImputer``.
 It focuses on compute cost rather than user-facing accuracy tables in :doc:`benchmarks`.
 
-Benchmark Registry
-******************
+Benchmark Scope
+***************
 
-The registry lives in ``scripts/_multivariate_perf_registry.py`` and defines the cases used for optimization work:
+The optimization session compared implementations on these workloads:
 
 - ``numeric_mar_medium``: 5000x25 float32 array with 8% missing-at-random values.
 - ``numeric_block_medium``: 5000x25 float32 array with contiguous missing blocks on 25% of columns.
@@ -17,37 +17,8 @@ The registry lives in ``scripts/_multivariate_perf_registry.py`` and defines the
 - ``numeric_wide_light_missing``: 2500x120 float32 array with 4% missingness.
 - ``mixed_dataframe_mar``: 4000-row mixed dataframe with numeric, categorical, string, and boolean columns.
 
-The suite intentionally uses synthetic and local-only cases so it can run without remote dataset downloads and stay stable
-across optimization branches.
-
-Tooling
-*******
-
-Run the benchmark suite:
-
-.. code-block:: bash
-
-   python scripts/run_multivariate_benchmarks.py --repeat 3 --warmup 1 --output docs/_static/performance/baseline.csv
-
-Run a focused profile for one or more registry entries:
-
-.. code-block:: bash
-
-   python scripts/profile_multivariate.py --benchmark numeric_mar_medium --benchmark mixed_dataframe_mar
-
-The benchmark runner records wall-clock time plus lightweight correctness metrics. The profiling runner writes text and
-JSON summaries under ``docs/_static/performance/profiles/`` using ``cProfile`` and ``tracemalloc``.
-
-Artifacts
-*********
-
-These generated artifacts are written locally under ``docs/_static/performance/`` and are gitignored:
-
-- ``docs/_static/performance/baseline.csv``: baseline benchmark medians and correctness metrics.
-- ``docs/_static/performance/final-strategy-04.csv``: the winning implementation rerun on the full registry.
-- ``docs/_static/performance/trial-summary.csv``: branch-by-branch timing comparison against the baseline.
-- ``docs/_static/performance/profiles/baseline/``: baseline cProfile and tracemalloc summaries.
-- ``docs/_static/performance/profiles/final-strategy-04/``: final-branch cProfile and tracemalloc summaries.
+Those benchmark inputs and their profiling outputs were generated locally during the optimization pass. They were
+intentionally kept out of version control and are not part of the repository contents.
 
 Strategy Tracker
 ****************
@@ -99,9 +70,9 @@ This ledger records the local branches used during the optimization pass.
      - Close to strategy 04 on some cases, but slower on the wide benchmark and not a consistent improvement.
    * - final
      - ``perf/final-report``
-     - Ship the best code path and collect the final benchmark and profiling artifacts.
+     - Ship the best code path and collect the final synthetic report.
      - complete
-     - This branch keeps strategy 04 and adds the synthetic report plus the cross-branch summary CSV.
+     - This branch keeps strategy 04 and the written summary of the optimization pass.
 
 Synthetic Report
 ****************
@@ -109,7 +80,7 @@ Synthetic Report
 Baseline Findings
 =================
 
-The baseline profiles in ``docs/_static/performance/profiles/baseline/`` showed three clear costs:
+The baseline profiling pass showed three clear costs:
 
 - ``MultivariateImputer._impute_col`` dominated end-to-end runtime.
 - ``optimask`` and ``FastRidge.fit`` were the hottest Python-visible kernels inside that loop.
