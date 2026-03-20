@@ -41,7 +41,7 @@ JSON summaries under ``docs/_static/performance/profiles/`` using ``cProfile`` a
 Artifacts
 *********
 
-The current branch includes these generated artifacts:
+These generated artifacts are written locally under ``docs/_static/performance/`` and are gitignored:
 
 - ``docs/_static/performance/baseline.csv``: baseline benchmark medians and correctness metrics.
 - ``docs/_static/performance/final-strategy-04.csv``: the winning implementation rerun on the full registry.
