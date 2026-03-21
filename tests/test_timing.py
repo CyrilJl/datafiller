@@ -7,7 +7,7 @@ from datafiller import MultivariateImputer
 
 def test_multivariate_imputer_timing():
     rng = np.random.RandomState(0)
-    x = rng.normal(size=(10000, 25)).astype(np.float32)
+    x = rng.normal(size=(25_000, 25)).astype(np.float32)
     missing_mask = rng.rand(*x.shape) < 0.05
     x[missing_mask] = np.nan
 

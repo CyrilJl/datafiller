@@ -24,7 +24,7 @@ jobs:
 
       - name: Test with pytest
         run: |
-          pytest
+          pytest -vv -s
 
   format:
     needs: test
