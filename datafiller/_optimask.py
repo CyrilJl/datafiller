@@ -7,7 +7,7 @@ imputation model.
 """
 
 import numpy as np
-from numba import bool_, njit, prange, uint32
+from numba import bool_, njit, uint32
 from numba.types import UniTuple
 
 
@@ -31,14 +31,14 @@ def groupby_max(a: np.ndarray, b: np.ndarray, n: int) -> np.ndarray:
     return ret
 
 
-@njit(uint32[:](uint32[:], uint32[:], uint32[:], uint32, uint32), boundscheck=False, cache=True, parallel=True)
+@njit(uint32[:](uint32[:], uint32[:], uint32[:], uint32, uint32), boundscheck=False, cache=True)
 def diff1d(index, index_with_nan, permutation, index_split, max_val):
     """
     equivalent to np.setdiff1d(rows, rows_with_nan[p_rows][:j0])
     """
     to_exclude = np.zeros(max_val, dtype=np.bool_)
 
-    for i in prange(index_split):
+    for i in range(index_split):
         val = index_with_nan[permutation[i]]
         to_exclude[val] = True
 
@@ -57,19 +57,19 @@ def diff1d(index, index_with_nan, permutation, index_split, max_val):
     return result
 
 
-@njit(UniTuple(uint32[:], 2)(uint32[:], uint32[:], uint32[:]), parallel=True, boundscheck=False, cache=True)
+@njit(UniTuple(uint32[:], 2)(uint32[:], uint32[:], uint32[:]), boundscheck=False, cache=True)
 def apply_p_step(p_step, a, b):
     """Applies a permutation to two arrays."""
     ret_a = np.empty(a.size, dtype=np.uint32)
     ret_b = np.empty(b.size, dtype=np.uint32)
-    for k in prange(a.size):
+    for k in range(a.size):
         pk = p_step[k]
         ret_a[k] = a[pk]
         ret_b[k] = b[pk]
     return ret_a, ret_b
 
 
-@njit(uint32[:](uint32[:], uint32[:]), parallel=True, boundscheck=False, cache=True)
+@njit(uint32[:](uint32[:], uint32[:]), boundscheck=False, cache=True)
 def numba_apply_permutation(p, x):
     """
     numba equivalent to:
@@ -83,15 +83,15 @@ def numba_apply_permutation(p, x):
     rank = np.empty(n, dtype=np.uint32)
     result = np.empty(m, dtype=np.uint32)
 
-    for i in prange(n):
+    for i in range(n):
         rank[p[i]] = i
 
-    for i in prange(m):
+    for i in range(m):
         result[i] = rank[x[i]]
     return result
 
 
-@njit((uint32[:], uint32[:]), parallel=True, boundscheck=False, cache=True)
+@njit((uint32[:], uint32[:]), boundscheck=False, cache=True)
 def numba_apply_permutation_inplace(p: np.ndarray, x: np.ndarray):
     """Applies a permutation to an array in-place (Numba-jitted).
 
@@ -102,10 +102,10 @@ def numba_apply_permutation_inplace(p: np.ndarray, x: np.ndarray):
     n = p.size
     rank = np.empty(n, dtype=np.uint32)
 
-    for i in prange(n):
+    for i in range(n):
         rank[p[i]] = i
 
-    for i in prange(x.size):
+    for i in range(x.size):
         x[i] = rank[x[i]]
 
 

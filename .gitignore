@@ -212,3 +212,6 @@ __marimo__/
 # Benchmark results
 imputation_benchmark_results.csv
 imputation_benchmark_comparison.png
+
+# Codex multivariate performance session artifacts
+docs/_static/performance/

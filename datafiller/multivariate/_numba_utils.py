@@ -3,7 +3,7 @@
 from typing import Tuple
 
 import numpy as np
-from numba import njit, prange
+from numba import njit
 
 
 @njit(boundscheck=False, cache=True)
@@ -67,7 +67,7 @@ def nan_positions_subset(
     return sub_iy[:cnt], sub_ix[:cnt]
 
 
-@njit(parallel=True, boundscheck=False, cache=True)
+@njit(boundscheck=False, cache=True)
 def _subset(X: np.ndarray, rows: np.ndarray, columns: np.ndarray) -> np.ndarray:
     """Extracts a subset of a matrix based on row and column indices.
 
@@ -80,7 +80,7 @@ def _subset(X: np.ndarray, rows: np.ndarray, columns: np.ndarray) -> np.ndarray:
         The extracted sub-matrix.
     """
     Xs = np.empty((len(rows), len(columns)), dtype=X.dtype)
-    for i in prange(len(rows)):
+    for i in range(len(rows)):
         for j in range(len(columns)):
             Xs[i, j] = X[rows[i], columns[j]]
     return Xs
@@ -139,7 +139,7 @@ def _trainable_rows(mask_nan: np.ndarray, col: int) -> np.ndarray:
     return ret[:cnt]
 
 
-@njit(boundscheck=False, parallel=True)
+@njit(boundscheck=False)
 def _mask_index_to_impute(size: int, to_impute: np.ndarray) -> np.ndarray:
     """Converts a list of indices to a boolean mask.
 
@@ -151,7 +151,7 @@ def _mask_index_to_impute(size: int, to_impute: np.ndarray) -> np.ndarray:
         A boolean mask of length `size`.
     """
     ret = np.zeros(size, dtype=np.bool_)
-    for i in prange(len(to_impute)):
+    for i in range(len(to_impute)):
         ret[to_impute[i]] = True
     return ret
 
@@ -163,7 +163,7 @@ def unique2d(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     return x[idx], inv.ravel()
 
 
-@njit(boundscheck=False, parallel=True)
+@njit(boundscheck=False)
 def _index_to_mask(x: np.ndarray, n: int) -> np.ndarray:
     """Converts an array of indices to a boolean mask.
 
@@ -175,6 +175,6 @@ def _index_to_mask(x: np.ndarray, n: int) -> np.ndarray:
         A boolean mask of size `n`.
     """
     ret = np.zeros(n, dtype=np.bool_)
-    for k in prange(len(x)):
+    for k in range(len(x)):
         ret[x[k]] = True
     return ret
