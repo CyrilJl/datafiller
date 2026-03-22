@@ -68,6 +68,26 @@ def nan_positions_subset(
 
 
 @njit(boundscheck=False, cache=True)
+def nan_positions_subset_cols(
+    iy: np.ndarray,
+    ix: np.ndarray,
+    mask_subset_cols: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Find NaN positions for a prefiltered row set and a subset of columns."""
+    n_nan = len(ix)
+    sub_iy, sub_ix = np.empty(n_nan, np.uint32), np.empty(n_nan, np.uint32)
+    cnt = 0
+    for k in range(n_nan):
+        col = ix[k]
+        if mask_subset_cols[col]:
+            sub_iy[cnt] = iy[k]
+            sub_ix[cnt] = col
+            cnt += 1
+
+    return sub_iy[:cnt], sub_ix[:cnt]
+
+
+@njit(boundscheck=False, cache=True)
 def _subset(X: np.ndarray, rows: np.ndarray, columns: np.ndarray) -> np.ndarray:
     """Extracts a subset of a matrix based on row and column indices.
 
