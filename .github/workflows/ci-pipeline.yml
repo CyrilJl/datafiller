@@ -8,19 +8,30 @@ on:
 jobs:
 
   test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python-version: "3.12"
+            pandas-label: "2.x"
+            pandas-spec: ">=2,<3"
+          - python-version: "3.12"
+            pandas-label: "3.x"
+            pandas-spec: ">=3,<4"
+    name: Test (Python ${{ matrix.python-version }}, pandas ${{ matrix.pandas-label }})
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e .[test]
+          python -m pip install -e .[test] "pandas${{ matrix.pandas-spec }}"
 
       - name: Test with pytest
         run: |
