@@ -36,22 +36,22 @@ class FastRidge:
         """
         X = np.asarray(X, dtype=np.float32)
         y = np.asarray(y, dtype=np.float32)
+        n_samples = X.shape[0]
+        Xt = X.T
 
         if self.fit_intercept:
             X_mean = X.mean(axis=0)
             y_mean = y.mean()
-            X_work = X - X_mean
-            y_work = y - y_mean
+            A = Xt @ X - np.float32(n_samples) * np.outer(X_mean, X_mean)
+            b = Xt @ y - np.float32(n_samples) * X_mean * y_mean
         else:
-            X_work = X
-            y_work = y
             X_mean = None
             y_mean = np.float32(0.0)
+            A = Xt @ X
+            b = Xt @ y
 
-        Xt = X_work.T
-        A = Xt @ X_work
         A.flat[:: A.shape[0] + 1] += self.alpha
-        self.coef_ = np.linalg.solve(A, Xt @ y_work)
+        self.coef_ = np.linalg.solve(A, b)
 
         if self.fit_intercept:
             self.intercept_ = y_mean - (X_mean @ self.coef_)

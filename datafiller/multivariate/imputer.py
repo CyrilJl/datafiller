@@ -20,6 +20,7 @@ from ._numba_utils import (
     _trainable_rows,
     nan_positions,
     nan_positions_subset,
+    nan_positions_subset_cols,
     unique2d,
 )
 from ._scoring import scoring
@@ -325,6 +326,16 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
 
         return pd.DataFrame(data, index=original_index, columns=original_columns)
 
+    @staticmethod
+    def _group_pattern_rows(indexes: np.ndarray) -> list[np.ndarray]:
+        """Group inverse-index labels once instead of rescanning them per pattern."""
+        if not len(indexes):
+            return []
+        order = np.argsort(indexes, kind="stable").astype(np.uint32, copy=False)
+        sorted_indexes = indexes[order]
+        split_points = np.flatnonzero(np.diff(sorted_indexes)) + 1
+        return [group.astype(np.uint32, copy=False) for group in np.split(order, split_points)]
+
     def _impute_col(
         self,
         x: np.ndarray,
@@ -359,7 +370,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             categorical_cols (set[int]): Indices of columns that should be
                 treated as categorical targets.
         """
-        m, n = x.shape
+        _, n = x.shape
 
         if not (
             imputable_rows := _imputable_rows(
@@ -376,54 +387,52 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         if not (trainable_rows := _trainable_rows(mask_nan=mask_nan, col=col_to_impute)).size:
             return  # Cannot impute if no training data is available for this column
 
-        mask_trainable_rows = _index_to_mask(trainable_rows, m)
-        mask_valid = ~mask_nan
-        patterns, indexes = unique2d(mask_valid[imputable_rows][:, sampled_cols])
+        sampled_cols_uint32 = sampled_cols.astype(np.uint32, copy=False)
+        local_train = _subset(X=x, rows=trainable_rows, columns=sampled_cols_uint32)
+        local_target = _subset_one_column(X=x, rows=trainable_rows, col=col_to_impute)
+        local_predict = _subset(X=x, rows=imputable_rows, columns=sampled_cols_uint32)
 
-        pre_iy_trial, pre_ix_trial = nan_positions_subset(
-            iy,
-            ix,
-            mask_trainable_rows,
-            _index_to_mask(sampled_cols, n),
-        )
+        patterns, indexes = unique2d(~np.isnan(local_predict))
+        prediction_groups = self._group_pattern_rows(indexes)
 
-        for k in range(len(patterns)):
-            index_predict = imputable_rows[indexes == k]
-            usable_cols = sampled_cols[patterns[k]].astype(np.uint32)
-            mask_usable_cols = _index_to_mask(usable_cols, n)
-            if len(usable_cols):
-                iy_trial, ix_trial = nan_positions_subset(
-                    pre_iy_trial,
-                    pre_ix_trial,
-                    mask_trainable_rows,
-                    mask_usable_cols,
-                )
-                rows, cols = optimask(
-                    iy=iy_trial,
-                    ix=ix_trial,
-                    rows=trainable_rows,
-                    cols=usable_cols,
-                    global_matrix_size=(m, n),
-                )
-                if (len(rows) < self.min_samples_train) or (not len(cols)):
-                    continue  # Not enough data to train a model
+        _, local_iy, local_ix = nan_positions(local_train)
+        local_rows = np.arange(len(trainable_rows), dtype=np.uint32)
+        local_cols = np.arange(len(sampled_cols_uint32), dtype=np.uint32)
 
-                X_train = _subset(X=x, rows=rows, columns=cols)
-                y_train = _subset_one_column(X=x, rows=rows, col=col_to_impute)
-                is_categorical_target = col_to_impute in categorical_cols
-                if is_categorical_target:
-                    if (unique_y := np.unique(y_train)).size < 2:
-                        x_imputed[index_predict, col_to_impute] = unique_y[0]
-                        continue
-                    estimator = self.classifier
-                    y_train = y_train.astype(np.int64)
-                else:
-                    estimator = self.regressor
-                estimator.fit(X=X_train, y=y_train)
-                predictions = estimator.predict(_subset(X=x, rows=index_predict, columns=cols))
-                if is_categorical_target:
-                    predictions = predictions.astype(np.float32)
-                x_imputed[index_predict, col_to_impute] = predictions
+        for pattern, prediction_group in zip(patterns, prediction_groups, strict=False):
+            usable_cols_local = local_cols[pattern].astype(np.uint32, copy=False)
+            if not len(usable_cols_local):
+                continue
+
+            mask_usable_cols = _index_to_mask(usable_cols_local, len(sampled_cols_uint32))
+            iy_trial, ix_trial = nan_positions_subset_cols(local_iy, local_ix, mask_usable_cols)
+            rows, cols = optimask(
+                iy=iy_trial,
+                ix=ix_trial,
+                rows=local_rows,
+                cols=usable_cols_local,
+                global_matrix_size=local_train.shape,
+            )
+            if (len(rows) < self.min_samples_train) or (not len(cols)):
+                continue  # Not enough data to train a model
+
+            X_train = _subset(X=local_train, rows=rows, columns=cols)
+            y_train = local_target[rows]
+            is_categorical_target = col_to_impute in categorical_cols
+            if is_categorical_target:
+                if (unique_y := np.unique(y_train)).size < 2:
+                    x_imputed[imputable_rows[prediction_group], col_to_impute] = unique_y[0]
+                    continue
+                estimator = self.classifier
+                y_train = y_train.astype(np.int64)
+            else:
+                estimator = self.regressor
+
+            estimator.fit(X=X_train, y=y_train)
+            predictions = estimator.predict(_subset(X=local_predict, rows=prediction_group, columns=cols))
+            if is_categorical_target:
+                predictions = predictions.astype(np.float32)
+            x_imputed[imputable_rows[prediction_group], col_to_impute] = predictions
 
     def __call__(
         self,
