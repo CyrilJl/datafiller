@@ -93,7 +93,7 @@ def test_multivariate_imputer_timing():
     _ = imputer(x)
     elapsed = time.perf_counter() - start
 
-    print(f"MultivariateImputer elapsed seconds: {elapsed:.6f}")
+    print(f"MultivariateImputer elapsed seconds: {elapsed:.2f}s")
 
 
 def test_tsi_timing():
@@ -106,4 +106,4 @@ def test_tsi_timing():
     _ = imputer(df_missing, cols_to_impute=target_columns, n_nearest_features=35)
     elapsed = time.perf_counter() - start
 
-    print(f"TimeSeriesImputer elapsed seconds: {elapsed:.6f}")
+    print(f"TimeSeriesImputer elapsed seconds: {elapsed:.2f}s")
