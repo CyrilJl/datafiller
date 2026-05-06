@@ -88,6 +88,24 @@ def nan_positions_subset_cols(
 
 
 @njit(boundscheck=False, cache=True)
+def complete_rows_for_cols(mask_nan: np.ndarray, cols: np.ndarray) -> np.ndarray:
+    """Return row indices that are complete for all selected columns."""
+    n_rows = mask_nan.shape[0]
+    rows = np.empty(n_rows, dtype=np.uint32)
+    cnt = 0
+    for i in range(n_rows):
+        is_complete = True
+        for j in range(len(cols)):
+            if mask_nan[i, cols[j]]:
+                is_complete = False
+                break
+        if is_complete:
+            rows[cnt] = i
+            cnt += 1
+    return rows[:cnt]
+
+
+@njit(boundscheck=False, cache=True)
 def _subset(X: np.ndarray, rows: np.ndarray, columns: np.ndarray) -> np.ndarray:
     """Extracts a subset of a matrix based on row and column indices.
 

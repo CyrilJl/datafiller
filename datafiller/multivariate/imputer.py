@@ -18,6 +18,7 @@ from ._numba_utils import (
     _subset,
     _subset_one_column,
     _trainable_rows,
+    complete_rows_for_cols,
     nan_positions,
     nan_positions_subset,
     nan_positions_subset_cols,
@@ -395,7 +396,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         patterns, indexes = unique2d(~np.isnan(local_predict))
         prediction_groups = self._group_pattern_rows(indexes)
 
-        _, local_iy, local_ix = nan_positions(local_train)
+        local_mask_nan, local_iy, local_ix = nan_positions(local_train)
         local_rows = np.arange(len(trainable_rows), dtype=np.uint32)
         local_cols = np.arange(len(sampled_cols_uint32), dtype=np.uint32)
 
@@ -404,15 +405,19 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             if not len(usable_cols_local):
                 continue
 
-            mask_usable_cols = _index_to_mask(usable_cols_local, len(sampled_cols_uint32))
-            iy_trial, ix_trial = nan_positions_subset_cols(local_iy, local_ix, mask_usable_cols)
-            rows, cols = optimask(
-                iy=iy_trial,
-                ix=ix_trial,
-                rows=local_rows,
-                cols=usable_cols_local,
-                global_matrix_size=local_train.shape,
-            )
+            rows = complete_rows_for_cols(local_mask_nan, usable_cols_local)
+            if len(rows) >= self.min_samples_train:
+                cols = usable_cols_local
+            else:
+                mask_usable_cols = _index_to_mask(usable_cols_local, len(sampled_cols_uint32))
+                iy_trial, ix_trial = nan_positions_subset_cols(local_iy, local_ix, mask_usable_cols)
+                rows, cols = optimask(
+                    iy=iy_trial,
+                    ix=ix_trial,
+                    rows=local_rows,
+                    cols=usable_cols_local,
+                    global_matrix_size=local_train.shape,
+                )
             if (len(rows) < self.min_samples_train) or (not len(cols)):
                 continue  # Not enough data to train a model
 

@@ -2,8 +2,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import datafiller.multivariate.imputer as multivariate_imputer_module
 from datafiller.datasets import load_titanic
 from datafiller.multivariate import MultivariateImputer
+from datafiller.multivariate._numba_utils import complete_rows_for_cols
 
 
 @pytest.fixture
@@ -149,3 +151,66 @@ def test_multivariate_imputer_n_nearest_features_tracking(nan_array, use_df):
             assert isinstance(features, np.ndarray)
         assert len(features) <= n_nearest_features
         assert col not in features
+
+
+def test_complete_rows_for_cols_returns_rows_without_nans():
+    mask_nan = np.array(
+        [
+            [False, False, False],
+            [False, True, False],
+            [False, False, True],
+            [False, False, False],
+        ],
+        dtype=bool,
+    )
+
+    rows = complete_rows_for_cols(mask_nan, np.array([1, 2], dtype=np.uint32))
+
+    np.testing.assert_array_equal(rows, np.array([0, 3], dtype=np.uint32))
+
+
+def test_multivariate_imputer_uses_complete_case_fast_path(monkeypatch):
+    x = np.array(
+        [
+            [1.0, 10.0, 100.0],
+            [2.0, 20.0, 200.0],
+            [3.0, 30.0, 300.0],
+            [np.nan, 40.0, 400.0],
+        ]
+    )
+
+    def fail_optimask(**kwargs):
+        raise AssertionError("optimask should not run when complete-case rows are sufficient")
+
+    monkeypatch.setattr(multivariate_imputer_module, "optimask", fail_optimask)
+
+    imputed = MultivariateImputer(min_samples_train=2, rng=0)(x)
+
+    assert not np.isnan(imputed[3, 0])
+
+
+def test_multivariate_imputer_falls_back_to_optimask_when_complete_cases_are_insufficient(monkeypatch):
+    x = np.array(
+        [
+            [1.0, 1.0, 1.0],
+            [2.0, 2.0, np.nan],
+            [3.0, 3.0, np.nan],
+            [4.0, 4.0, 4.0],
+            [5.0, 5.0, np.nan],
+            [np.nan, 6.0, 6.0],
+        ]
+    )
+    optimask_calls = 0
+    original_optimask = multivariate_imputer_module.optimask
+
+    def counting_optimask(**kwargs):
+        nonlocal optimask_calls
+        optimask_calls += 1
+        return original_optimask(**kwargs)
+
+    monkeypatch.setattr(multivariate_imputer_module, "optimask", counting_optimask)
+
+    imputed = MultivariateImputer(min_samples_train=3, rng=0)(x)
+
+    assert optimask_calls >= 1
+    assert not np.isnan(imputed[5, 0])
