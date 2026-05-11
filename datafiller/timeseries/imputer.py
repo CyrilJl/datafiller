@@ -33,6 +33,11 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             used for reproducible feature sampling when `n_nearest_features`
             is not None. Defaults to None.
         verbose (int, optional): The verbosity level. Defaults to 0.
+        pattern_retention (float, optional): Fraction of prediction rows per
+            column whose exact missingness patterns should be retained before
+            coarsening rare compatible patterns in the wrapped
+            ``MultivariateImputer``. ``1.0`` preserves exact-pattern behavior.
+            Defaults to ``1.0``.
         scoring (str or callable, optional): The scoring function to use for
             feature selection. If 'default', the default scoring function is
             used. If a callable, it must take two arguments (the data matrix
@@ -75,6 +80,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         min_samples_train: int | None = None,
         rng: Union[int, None] = None,
         verbose: int = 0,
+        pattern_retention: float = 1.0,
         scoring: Union[str, callable] = "default",
         interpolate_gaps_less_than: int = None,
     ):
@@ -88,6 +94,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         self.min_samples_train = min_samples_train
         self.rng = rng
         self.verbose = verbose
+        self.pattern_retention = MultivariateImputer._validate_pattern_retention(pattern_retention)
         self.scoring = scoring
         self.interpolate_gaps_less_than = interpolate_gaps_less_than
         self._build_multivariate_imputer()
@@ -101,6 +108,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             verbose=self.verbose,
             min_samples_train=min_samples_train,
             rng=self.rng,
+            pattern_retention=self.pattern_retention,
             scoring=self.scoring,
         )
 
@@ -114,7 +122,17 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
 
     def set_params(self, **params) -> "TimeSeriesImputer":
         """Set parameters and refresh dependent objects."""
-        rebuild_keys = {"regressor", "classifier", "min_samples_train", "rng", "verbose", "scoring"}
+        if "pattern_retention" in params:
+            params["pattern_retention"] = MultivariateImputer._validate_pattern_retention(params["pattern_retention"])
+        rebuild_keys = {
+            "regressor",
+            "classifier",
+            "min_samples_train",
+            "rng",
+            "verbose",
+            "pattern_retention",
+            "scoring",
+        }
         rebuild = any(key in params for key in rebuild_keys)
 
         super().set_params(**params)

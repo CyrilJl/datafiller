@@ -8,6 +8,20 @@ from datafiller.multivariate import MultivariateImputer
 from datafiller.multivariate._numba_utils import complete_rows_for_cols
 
 
+class CountingMeanRegressor:
+    def __init__(self):
+        self.fit_calls = 0
+        self.mean_ = np.nan
+
+    def fit(self, X, y):
+        self.fit_calls += 1
+        self.mean_ = np.mean(y)
+        return self
+
+    def predict(self, X):
+        return np.full(X.shape[0], self.mean_, dtype=float)
+
+
 @pytest.fixture
 def nan_array():
     rng = np.random.default_rng(0)
@@ -151,6 +165,97 @@ def test_multivariate_imputer_n_nearest_features_tracking(nan_array, use_df):
             assert isinstance(features, np.ndarray)
         assert len(features) <= n_nearest_features
         assert col not in features
+
+
+def test_multivariate_imputer_pattern_retention_default_matches_explicit_exact_behavior():
+    x = np.array(
+        [
+            [1.0, 1.0, 10.0, 100.0, 1000.0],
+            [2.0, 2.0, 20.0, 200.0, 2000.0],
+            [3.0, 3.0, 30.0, 300.0, 3000.0],
+            [4.0, 4.0, 40.0, 400.0, 4000.0],
+            [np.nan, 5.0, 50.0, np.nan, np.nan],
+            [np.nan, 6.0, 60.0, np.nan, np.nan],
+            [np.nan, 7.0, 70.0, 700.0, np.nan],
+            [np.nan, 8.0, 80.0, np.nan, 8000.0],
+            [np.nan, 9.0, 90.0, 900.0, 9000.0],
+        ]
+    )
+
+    default_imputed = MultivariateImputer(rng=0)(x)
+    explicit_imputed = MultivariateImputer(rng=0, pattern_retention=1.0)(x)
+
+    np.testing.assert_allclose(default_imputed, explicit_imputed, equal_nan=True)
+
+
+def test_multivariate_imputer_pattern_retention_reduces_compatible_model_count():
+    x = np.array(
+        [
+            [1.0, 1.0, 10.0, 100.0, 1000.0],
+            [2.0, 2.0, 20.0, 200.0, 2000.0],
+            [3.0, 3.0, 30.0, 300.0, 3000.0],
+            [4.0, 4.0, 40.0, 400.0, 4000.0],
+            [np.nan, 5.0, 50.0, np.nan, np.nan],
+            [np.nan, 6.0, 60.0, np.nan, np.nan],
+            [np.nan, 7.0, 70.0, np.nan, np.nan],
+            [np.nan, 8.0, 80.0, np.nan, np.nan],
+            [np.nan, 9.0, 90.0, 900.0, np.nan],
+            [np.nan, 10.0, 100.0, np.nan, 10000.0],
+            [np.nan, 11.0, 110.0, 1100.0, 11000.0],
+        ]
+    )
+    exact_regressor = CountingMeanRegressor()
+    coarse_regressor = CountingMeanRegressor()
+
+    MultivariateImputer(regressor=exact_regressor, pattern_retention=1.0)(
+        x,
+        cols_to_impute=[0],
+        normalize=False,
+    )
+    imputed = MultivariateImputer(regressor=coarse_regressor, pattern_retention=0.0)(
+        x,
+        cols_to_impute=[0],
+        normalize=False,
+    )
+
+    assert exact_regressor.fit_calls == 4
+    assert coarse_regressor.fit_calls == 1
+    assert not np.isnan(imputed[:, 0]).any()
+
+
+def test_multivariate_imputer_pattern_retention_falls_back_for_incompatible_rare_patterns():
+    x = np.array(
+        [
+            [1.0, 1.0, 10.0, 100.0, 1000.0],
+            [2.0, 2.0, 20.0, 200.0, 2000.0],
+            [3.0, 3.0, 30.0, 300.0, 3000.0],
+            [4.0, 4.0, 40.0, 400.0, 4000.0],
+            [np.nan, 5.0, 50.0, np.nan, np.nan],
+            [np.nan, 6.0, 60.0, np.nan, np.nan],
+            [np.nan, 7.0, 70.0, np.nan, np.nan],
+            [np.nan, 8.0, np.nan, 800.0, np.nan],
+        ]
+    )
+    regressor = CountingMeanRegressor()
+
+    imputed = MultivariateImputer(regressor=regressor, pattern_retention=0.0)(
+        x,
+        cols_to_impute=[0],
+        normalize=False,
+    )
+
+    assert regressor.fit_calls == 2
+    assert not np.isnan(imputed[7, 0])
+
+
+@pytest.mark.parametrize("pattern_retention", [-0.1, 1.1, "fast"])
+def test_multivariate_imputer_pattern_retention_validation(pattern_retention):
+    with pytest.raises(ValueError):
+        MultivariateImputer(pattern_retention=pattern_retention)
+
+    imputer = MultivariateImputer()
+    with pytest.raises(ValueError):
+        imputer.set_params(pattern_retention=pattern_retention)
 
 
 def test_complete_rows_for_cols_returns_rows_without_nans():

@@ -62,6 +62,13 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             used for reproducible feature sampling when `n_nearest_features`
             is not None, and for the default categorical classifier when one
             is not provided. Defaults to None.
+        pattern_retention (float, optional): Fraction of prediction rows per
+            column whose exact missingness patterns should be retained before
+            coarsening rare compatible patterns. Must be between 0 and 1.
+            ``1.0`` preserves the current exact-pattern behavior. Lower
+            values can reduce runtime by fitting fewer models, at the cost of
+            using fewer predictors for rows with rare patterns. Defaults to
+            ``1.0``.
         scoring (str or callable, optional): The scoring function to use for
             feature selection.
             If 'default', the default scoring function is used.
@@ -107,6 +114,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         verbose: int = 0,
         min_samples_train: int | None = None,
         rng: Union[int, None] = None,
+        pattern_retention: float = 1.0,
         scoring: Union[str, callable] = "default",
     ):
         """
@@ -124,6 +132,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             self.min_samples_train = min_samples_train
         self.rng = rng
         self._rng = np.random.RandomState(rng)
+        self.pattern_retention = self._validate_pattern_retention(pattern_retention)
         self._classifier_default = classifier is None
         self.classifier = classifier or DecisionTreeClassifier(max_depth=4, random_state=rng)
         if scoring == "default":
@@ -147,6 +156,8 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         classifier_param = params.get("classifier", None) if "classifier" in params else None
         regressor_param = params.get("regressor", None) if "regressor" in params else None
         rng_changed = "rng" in params
+        if "pattern_retention" in params:
+            params["pattern_retention"] = self._validate_pattern_retention(params["pattern_retention"])
 
         super().set_params(**params)
 
@@ -166,6 +177,17 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 self.classifier = DecisionTreeClassifier(max_depth=4, random_state=self.rng)
 
         return self
+
+    @staticmethod
+    def _validate_pattern_retention(pattern_retention: float) -> float:
+        """Validate the speed/accuracy control for prediction pattern coarsening."""
+        try:
+            value = float(pattern_retention)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("`pattern_retention` must be a float between 0 and 1.") from exc
+        if not 0.0 <= value <= 1.0:
+            raise ValueError("`pattern_retention` must be a float between 0 and 1.")
+        return value
 
     @np.errstate(all="ignore")
     def _get_sampled_cols(
@@ -337,6 +359,68 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         split_points = np.flatnonzero(np.diff(sorted_indexes)) + 1
         return [group.astype(np.uint32, copy=False) for group in np.split(order, split_points)]
 
+    @staticmethod
+    def _coarsen_prediction_groups(
+        patterns: np.ndarray,
+        prediction_groups: list[np.ndarray],
+        pattern_retention: float,
+    ) -> tuple[np.ndarray, list[np.ndarray]]:
+        """Merge rare compatible prediction patterns into retained common patterns."""
+        if pattern_retention >= 1.0 or len(patterns) <= 1:
+            return patterns, prediction_groups
+
+        group_sizes = np.array([len(group) for group in prediction_groups], dtype=np.int64)
+        usable_pattern_indices = np.flatnonzero(patterns.any(axis=1))
+        if len(usable_pattern_indices) <= 1:
+            return patterns, prediction_groups
+
+        total_usable_rows = int(group_sizes[usable_pattern_indices].sum())
+        if total_usable_rows == 0:
+            return patterns, prediction_groups
+
+        sorted_indices = usable_pattern_indices[np.argsort(-group_sizes[usable_pattern_indices], kind="stable")]
+        target_rows = max(1, int(np.ceil(pattern_retention * total_usable_rows)))
+        cumulative_rows = np.cumsum(group_sizes[sorted_indices])
+        n_retained = min(len(sorted_indices), int(np.searchsorted(cumulative_rows, target_rows, side="left") + 1))
+
+        if n_retained >= len(usable_pattern_indices):
+            return patterns, prediction_groups
+
+        retained_indices = sorted_indices[:n_retained]
+        retained_index_set = set(retained_indices.tolist())
+        retained_patterns = patterns[retained_indices]
+        retained_col_counts = retained_patterns.sum(axis=1)
+        retained_group_sizes = group_sizes[retained_indices]
+        retained_group_parts = [[prediction_groups[index]] for index in retained_indices]
+
+        fallback_patterns = []
+        fallback_groups = []
+        for index, pattern in enumerate(patterns):
+            if index in retained_index_set:
+                continue
+
+            compatible = np.flatnonzero(np.all(~retained_patterns | pattern, axis=1))
+            if compatible.size:
+                best_position = max(
+                    compatible,
+                    key=lambda position: (retained_col_counts[position], retained_group_sizes[position]),
+                )
+                retained_group_parts[int(best_position)].append(prediction_groups[index])
+            else:
+                fallback_patterns.append(pattern)
+                fallback_groups.append(prediction_groups[index])
+
+        coarsened_patterns = [pattern for pattern in retained_patterns]
+        coarsened_groups = [
+            np.concatenate(parts).astype(np.uint32, copy=False) if len(parts) > 1 else parts[0]
+            for parts in retained_group_parts
+        ]
+        if fallback_patterns:
+            coarsened_patterns.extend(fallback_patterns)
+            coarsened_groups.extend(fallback_groups)
+
+        return np.asarray(coarsened_patterns, dtype=patterns.dtype), coarsened_groups
+
     def _impute_col(
         self,
         x: np.ndarray,
@@ -395,6 +479,11 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
 
         patterns, indexes = unique2d(~np.isnan(local_predict))
         prediction_groups = self._group_pattern_rows(indexes)
+        patterns, prediction_groups = self._coarsen_prediction_groups(
+            patterns=patterns,
+            prediction_groups=prediction_groups,
+            pattern_retention=self.pattern_retention,
+        )
 
         local_mask_nan, local_iy, local_ix = nan_positions(local_train)
         local_rows = np.arange(len(trainable_rows), dtype=np.uint32)

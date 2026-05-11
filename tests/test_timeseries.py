@@ -57,6 +57,26 @@ def test_timeseries_imputer_invalid_lags():
         TimeSeriesImputer(lags=[1, 0])
 
 
+def test_timeseries_imputer_pattern_retention_propagates_to_multivariate_imputer():
+    imputer = TimeSeriesImputer(pattern_retention=0.5)
+
+    assert imputer.multivariate_imputer.pattern_retention == 0.5
+
+    imputer.set_params(pattern_retention=0.25)
+
+    assert imputer.pattern_retention == 0.25
+    assert imputer.multivariate_imputer.pattern_retention == 0.25
+
+
+def test_timeseries_imputer_pattern_retention_validation():
+    with pytest.raises(ValueError):
+        TimeSeriesImputer(pattern_retention=1.1)
+
+    imputer = TimeSeriesImputer()
+    with pytest.raises(ValueError):
+        imputer.set_params(pattern_retention=-0.1)
+
+
 def test_timeseries_imputer_n_nearest_features_tracking(nan_df):
     imputer = TimeSeriesImputer(rng=0, lags=[1, -1])
     n_nearest_features = 3

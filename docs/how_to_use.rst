@@ -150,11 +150,13 @@ This example shows how categorical columns (such as ``sex`` or ``embarked``) are
 Parameters
 ----------
 
-The main initialization parameters are ``regressor`` and ``classifier`` to set the numeric/categorical models, plus ``scoring``, ``rng``,
-``min_samples_train``, and ``verbose`` to control feature selection, reproducibility, training thresholds, and logging. Call parameters
-include ``rows_to_impute`` and ``cols_to_impute`` to target subsets and ``n_nearest_features`` to limit the features used per imputation;
-setting ``n_nearest_features`` is recommended to reduce computation time. For a complete list and full descriptions, see the :doc:`api`
-reference.
+The main initialization parameters are ``regressor`` and ``classifier`` to set the numeric/categorical models, plus
+``scoring``, ``rng``, ``min_samples_train``, ``pattern_retention``, and ``verbose`` to control feature selection,
+reproducibility, training thresholds, prediction-pattern coarsening, and logging. ``pattern_retention=1.0`` keeps the
+exact current behavior; lower values retain fewer exact missingness patterns per column and can reduce runtime by fitting
+fewer models, with a possible accuracy cost. Call parameters include ``rows_to_impute`` and ``cols_to_impute`` to target
+subsets and ``n_nearest_features`` to limit the features used per imputation; setting ``n_nearest_features`` is recommended
+to reduce computation time. For a complete list and full descriptions, see the :doc:`api` reference.
 
 Time Series Imputer
 ********************
