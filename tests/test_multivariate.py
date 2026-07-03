@@ -40,6 +40,57 @@ def test_multivariate_imputer_less_nans(nan_array):
     assert np.isnan(imputed_array).sum() < np.isnan(nan_array).sum()
 
 
+def test_multivariate_imputer_handles_mar_missingness():
+    rng = np.random.default_rng(42)
+    n_samples = 300
+    observed_driver = rng.normal(size=n_samples)
+    support_feature = rng.normal(size=n_samples)
+    target = 2.0 * observed_driver - 0.5 * support_feature + rng.normal(scale=0.05, size=n_samples)
+    x_complete = np.column_stack([target, observed_driver, support_feature]).astype(np.float32)
+    x = x_complete.copy()
+
+    missing_mask = observed_driver > np.quantile(observed_driver, 0.65)
+    x[missing_mask, 0] = np.nan
+
+    imputed = MultivariateImputer(rng=0)(x, cols_to_impute=[0], n_nearest_features=2)
+
+    assert not np.isnan(imputed[:, 0]).any()
+    assert np.mean(np.abs(imputed[missing_mask, 0] - x_complete[missing_mask, 0])) < 0.15
+
+
+def test_multivariate_imputer_reuses_training_subset_for_multiple_prediction_patterns():
+    class CountingRegressor:
+        def __init__(self):
+            self.fit_calls = 0
+
+        def fit(self, X, y):
+            self.fit_calls += 1
+            self.value_ = float(np.mean(y))
+            return self
+
+        def predict(self, X):
+            return np.full(X.shape[0], self.value_, dtype=np.float32)
+
+    x = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 1.0, np.nan],
+            [2.0, 2.0, np.nan],
+            [3.0, 3.0, np.nan],
+            [4.0, 4.0, np.nan],
+            [np.nan, 5.0, np.nan],
+            [np.nan, 6.0, 6.0],
+        ],
+        dtype=np.float32,
+    )
+    regressor = CountingRegressor()
+
+    imputed = MultivariateImputer(regressor=regressor, min_samples_train=3)(x, cols_to_impute=[0])
+
+    assert regressor.fit_calls == 1
+    assert not np.isnan(imputed[5:, 0]).any()
+
+
 def test_multivariate_imputer_dataframe_support(nan_array):
     df = pd.DataFrame(nan_array, columns=[f"col_{i}" for i in range(nan_array.shape[1])])
     imputer = MultivariateImputer()

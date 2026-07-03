@@ -399,6 +399,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         local_mask_nan, local_iy, local_ix = nan_positions(local_train)
         local_rows = np.arange(len(trainable_rows), dtype=np.uint32)
         local_cols = np.arange(len(sampled_cols_uint32), dtype=np.uint32)
+        training_groups = {}
 
         for pattern, prediction_group in zip(patterns, prediction_groups, strict=False):
             usable_cols_local = local_cols[pattern].astype(np.uint32, copy=False)
@@ -421,12 +422,26 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             if (len(rows) < self.min_samples_train) or (not len(cols)):
                 continue  # Not enough data to train a model
 
+            key = (rows.tobytes(), cols.tobytes())
+            if key not in training_groups:
+                training_groups[key] = {"rows": rows, "cols": cols, "prediction_groups": []}
+            training_groups[key]["prediction_groups"].append(prediction_group)
+
+        for group in training_groups.values():
+            rows = group["rows"]
+            cols = group["cols"]
             X_train = _subset(X=local_train, rows=rows, columns=cols)
             y_train = local_target[rows]
             is_categorical_target = col_to_impute in categorical_cols
+            predict_rows = (
+                group["prediction_groups"][0]
+                if len(group["prediction_groups"]) == 1
+                else np.concatenate(group["prediction_groups"]).astype(np.uint32, copy=False)
+            )
+
             if is_categorical_target:
                 if (unique_y := np.unique(y_train)).size < 2:
-                    x_imputed[imputable_rows[prediction_group], col_to_impute] = unique_y[0]
+                    x_imputed[imputable_rows[predict_rows], col_to_impute] = unique_y[0]
                     continue
                 estimator = self.classifier
                 y_train = y_train.astype(np.int64)
@@ -434,10 +449,10 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 estimator = self.regressor
 
             estimator.fit(X=X_train, y=y_train)
-            predictions = estimator.predict(_subset(X=local_predict, rows=prediction_group, columns=cols))
+            predictions = estimator.predict(_subset(X=local_predict, rows=predict_rows, columns=cols))
             if is_categorical_target:
                 predictions = predictions.astype(np.float32)
-            x_imputed[imputable_rows[prediction_group], col_to_impute] = predictions
+            x_imputed[imputable_rows[predict_rows], col_to_impute] = predictions
 
     def __call__(
         self,

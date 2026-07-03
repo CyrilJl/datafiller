@@ -41,6 +41,10 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         interpolate_gaps_less_than (int, optional): The maximum length of
             gaps to interpolate linearly. If None, no linear interpolation is
             performed. Defaults to None.
+        add_time_features (bool, optional): Whether to add deterministic time
+            features before model-based imputation. These features are fully
+            observed after reindexing, which helps fill contiguous missing
+            timestamp blocks. Defaults to True.
 
     Attributes:
         imputation_features_ (dict or None): A dictionary mapping each imputed
@@ -77,6 +81,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         verbose: int = 0,
         scoring: Union[str, callable] = "default",
         interpolate_gaps_less_than: int = None,
+        add_time_features: bool = True,
     ):
         if not isinstance(lags, Iterable) or not all(isinstance(i, int) for i in lags):
             raise ValueError("lags must be an iterable of integers.")
@@ -90,6 +95,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         self.verbose = verbose
         self.scoring = scoring
         self.interpolate_gaps_less_than = interpolate_gaps_less_than
+        self.add_time_features = add_time_features
         self._build_multivariate_imputer()
         self.imputation_features_ = None
 
@@ -123,6 +129,76 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             self._build_multivariate_imputer()
 
         return self
+
+    @staticmethod
+    def _infer_frequency(index: pd.DatetimeIndex) -> object:
+        """Infer the base frequency, allowing regular gaps in the index."""
+        if index.freq is not None:
+            return index.freq
+
+        if len(index) < 2:
+            raise ValueError("DataFrame index must have a frequency or at least two timestamps to infer one.")
+        if len(index) >= 3:
+            inferred = pd.infer_freq(index)
+            if inferred is not None:
+                return inferred
+        if not index.is_monotonic_increasing:
+            raise ValueError("DataFrame index must be sorted in increasing order.")
+        if index.has_duplicates:
+            raise ValueError("DataFrame index must not contain duplicate timestamps.")
+
+        timestamps_ns = index.to_numpy(dtype="datetime64[ns]").astype(np.int64)
+        deltas = np.diff(timestamps_ns)
+        positive_deltas = deltas[deltas > 0]
+        if not positive_deltas.size:
+            raise ValueError("DataFrame index frequency could not be inferred.")
+
+        base_delta = positive_deltas.min()
+        if np.any(positive_deltas % base_delta != 0):
+            raise ValueError("DataFrame index frequency could not be inferred from irregular timestamp gaps.")
+        return pd.Timedelta(base_delta, unit="ns")
+
+    @classmethod
+    def _regularize_index(cls, df: pd.DataFrame) -> pd.DataFrame:
+        """Reindex a time series to its complete regular timestamp grid."""
+        freq = cls._infer_frequency(df.index)
+        full_index = pd.date_range(start=df.index[0], end=df.index[-1], freq=freq, name=df.index.name)
+        if len(full_index) == len(df.index) and full_index.equals(df.index):
+            return df
+        return df.reindex(full_index)
+
+    @staticmethod
+    def _make_time_features(index: pd.DatetimeIndex, reserved_names: Iterable[str] = ()) -> pd.DataFrame:
+        """Create low-cost, fully observed calendar features."""
+        elapsed = ((index - index[0]) / pd.Timedelta(days=1)).to_numpy(dtype=np.float32)
+        if elapsed.size and elapsed[-1] != 0:
+            trend = elapsed / elapsed[-1]
+        else:
+            trend = np.zeros(len(index), dtype=np.float32)
+
+        hour = index.hour.to_numpy(dtype=np.float32) + index.minute.to_numpy(dtype=np.float32) / 60.0
+        day_angle = np.float32(2.0 * np.pi) * hour / np.float32(24.0)
+        week_angle = np.float32(2.0 * np.pi) * index.dayofweek.to_numpy(dtype=np.float32) / np.float32(7.0)
+
+        base_features = {
+            "__time_trend": trend.astype(np.float32, copy=False),
+            "__time_day_sin": np.sin(day_angle).astype(np.float32, copy=False),
+            "__time_day_cos": np.cos(day_angle).astype(np.float32, copy=False),
+            "__time_week_sin": np.sin(week_angle).astype(np.float32, copy=False),
+            "__time_week_cos": np.cos(week_angle).astype(np.float32, copy=False),
+        }
+        used_names = set(reserved_names)
+        features = {}
+        for name, values in base_features.items():
+            feature_name = name
+            suffix = 1
+            while feature_name in used_names:
+                feature_name = f"{name}_{suffix}"
+                suffix += 1
+            used_names.add(feature_name)
+            features[feature_name] = values
+
+        return pd.DataFrame(features, index=index)
 
     def __call__(
         self,
@@ -166,8 +242,8 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             raise TypeError("Input must be a pandas DataFrame.")
         if not isinstance(df.index, pd.DatetimeIndex):
             raise TypeError("DataFrame index must be a DatetimeIndex.")
-        if df.index.freq is None:
-            raise ValueError("DataFrame index must have a frequency.")
+
+        df = self._regularize_index(df)
 
         if self.interpolate_gaps_less_than is not None:
             df = df.copy()
@@ -186,6 +262,11 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             shifted_frames.append(shifted)
         if shifted_frames:
             df_with_lags = pd.concat([df_with_lags, *shifted_frames], axis=1)
+        if self.add_time_features:
+            df_with_lags = pd.concat(
+                [df_with_lags, self._make_time_features(df.index, reserved_names=df_with_lags.columns)],
+                axis=1,
+            )
         df_with_lags = df_with_lags.dropna(how="all", axis=1)
 
         # Process cols_to_impute

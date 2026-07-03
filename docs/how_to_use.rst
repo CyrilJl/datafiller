@@ -159,7 +159,7 @@ reference.
 Time Series Imputer
 ********************
 
-The ``TimeSeriesImputer`` is a wrapper around the ``MultivariateImputer`` that is specifically designed for time series data.
+The ``TimeSeriesImputer`` is a wrapper around the ``MultivariateImputer`` that is specifically designed for time series data. It can infer a regular ``DatetimeIndex`` frequency, reinsert missing timestamp rows inside the observed range, and add low-cost calendar features that remain observed through contiguous gaps.
 
 PEMS-BAY Example
 ================
@@ -251,7 +251,7 @@ Parameters
 ----------
 
 Initialization parameters include ``lags`` for autoregressive features (positive integers create lags like `t-1`, negative integers create
-leads like `t+1`), ``regressor`` for the numeric model, ``interpolate_gaps_less_than`` to pre-fill short gaps, and the shared controls
-``scoring``, ``rng``, ``min_samples_train``, and ``verbose``. Call parameters include ``rows_to_impute`` and ``cols_to_impute`` to target
+leads like `t+1`), ``regressor`` for the numeric model, ``interpolate_gaps_less_than`` to pre-fill short gaps, ``add_time_features`` to
+include deterministic calendar/trend predictors, and the shared controls ``scoring``, ``rng``, ``min_samples_train``, and ``verbose``. Call parameters include ``rows_to_impute`` and ``cols_to_impute`` to target
 subsets, ``n_nearest_features`` to limit features used for imputation (recommended to reduce computation time), and ``before``/``after`` to
 restrict the time window. For a complete list and full descriptions, see the :doc:`api` reference.

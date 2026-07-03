@@ -22,7 +22,7 @@ DataFiller is a pragmatic imputation tool: it is unlikely to match the absolute 
 
 ## Key Features
 
-Key features include model-based imputation with lightweight models, mixed data support with one-hot encoding and label recovery, a dedicated ``TimeSeriesImputer`` with lag/lead features, performance-critical sections accelerated by Numba, smart feature selection for training subsets, and scikit-learn compatibility.
+Key features include model-based imputation with lightweight models, mixed data support with one-hot encoding and label recovery, a dedicated ``TimeSeriesImputer`` with lag/lead and calendar features for missing-at-random values and contiguous timestamp gaps, performance-critical sections accelerated by Numba, smart feature selection for training subsets, and scikit-learn compatibility.
 
 ## Installation
 
@@ -66,7 +66,7 @@ print(X_imputed)
 
 ### Imputing a Time Series DataFrame
 
-The ``TimeSeriesImputer`` is designed to work with pandas DataFrames that have a ``DatetimeIndex``. It automatically creates autoregressive features (lags and leads) to improve imputation accuracy.
+The ``TimeSeriesImputer`` is designed to work with pandas DataFrames that have a ``DatetimeIndex``. It automatically creates autoregressive features (lags and leads) to improve imputation accuracy, and can infer a regular frequency to reinsert missing timestamp blocks before imputation.
 
 ```python
 import pandas as pd
