@@ -69,28 +69,6 @@ def apply_p_step(p_step, a, b):
     return ret_a, ret_b
 
 
-@njit(uint32[:](uint32[:], uint32[:]), boundscheck=False, cache=True)
-def numba_apply_permutation(p, x):
-    """
-    numba equivalent to:
-        rank = np.empty_like(p)
-        rank[p] = np.arange(len(p))
-        # Use the rank array to permute x
-        return rank[x]
-    """
-    n = p.size
-    m = x.size
-    rank = np.empty(n, dtype=np.uint32)
-    result = np.empty(m, dtype=np.uint32)
-
-    for i in range(n):
-        rank[p[i]] = i
-
-    for i in range(m):
-        result[i] = rank[x[i]]
-    return result
-
-
 @njit((uint32[:], uint32[:]), boundscheck=False, cache=True)
 def numba_apply_permutation_inplace(p: np.ndarray, x: np.ndarray):
     """Applies a permutation to an array in-place (Numba-jitted).
@@ -107,24 +85,6 @@ def numba_apply_permutation_inplace(p: np.ndarray, x: np.ndarray):
 
     for i in range(x.size):
         x[i] = rank[x[i]]
-
-
-def apply_permutation(p: np.ndarray, x: np.ndarray, inplace: bool) -> np.ndarray | None:
-    """Applies a permutation to an array.
-
-    Args:
-        p: The permutation array.
-        x: The array to be permuted.
-        inplace: If True, applies the permutation in place; otherwise,
-            returns a new permuted array.
-
-    Returns:
-        The permuted array if `inplace` is False; otherwise, None.
-    """
-    if inplace:
-        numba_apply_permutation_inplace(p, x)
-    else:
-        return numba_apply_permutation(p, x)
 
 
 @njit(boundscheck=False, cache=True)
@@ -231,13 +191,13 @@ def optimask(
         step += 1
         if axis == 0:  # Sort by rows
             p_step = (-hy).argsort(kind=kind).astype(np.uint32)
-            apply_permutation(p_step, iyp, inplace=True)
+            numba_apply_permutation_inplace(p_step, iyp)
             p_rows, hy = apply_p_step(p_step, p_rows, hy)
             hx = groupby_max(ixp, iyp, n_nan)
             is_pareto_ordered = is_decreasing(hx)
         else:  # Sort by columns
             p_step = (-hx).argsort(kind=kind).astype(np.uint32)
-            apply_permutation(p_step, ixp, inplace=True)
+            numba_apply_permutation_inplace(p_step, ixp)
             hy = groupby_max(iyp, ixp, m_nan)
             p_cols, hx = apply_p_step(p_step, p_cols, hx)
             is_pareto_ordered = is_decreasing(hy)

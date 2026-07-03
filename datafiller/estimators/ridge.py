@@ -1,6 +1,44 @@
 import numpy as np
 
 
+def fit_ridge_from_gram(
+    gram: np.ndarray,
+    n_samples: int,
+    alpha: float,
+    fit_intercept: bool,
+) -> tuple[np.ndarray, float]:
+    """Solve the same ridge problem as :meth:`FastRidge.fit` from a Gram matrix.
+
+    Args:
+        gram: The `(k + 2, k + 2)` Gram matrix of the augmented training
+            matrix `[X, y, 1]`, i.e. `Z.T @ Z` with `Z = [X, y, ones]`.
+        n_samples: The number of training samples the Gram was computed on.
+        alpha: The regularization strength.
+        fit_intercept: Whether to fit an intercept.
+
+    Returns:
+        A tuple `(coef, intercept)`.
+    """
+    k = gram.shape[0] - 2
+    sxx = gram[:k, :k]
+    sxy = gram[:k, k]
+    if fit_intercept:
+        sx = gram[:k, k + 1]
+        sy = gram[k, k + 1]
+        A = sxx - np.outer(sx, sx) / n_samples
+        b = sxy - sx * (sy / n_samples)
+    else:
+        A = sxx.copy()
+        b = sxy
+    A.flat[:: k + 1] += alpha
+    coef = np.linalg.solve(A, b)
+    if fit_intercept:
+        intercept = sy / n_samples - (sx / n_samples) @ coef
+    else:
+        intercept = 0.0
+    return coef, intercept
+
+
 class FastRidge:
     """
     A simplified Ridge regressor.

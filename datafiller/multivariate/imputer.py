@@ -10,7 +10,7 @@ from sklearn.tree import DecisionTreeClassifier
 from tqdm.auto import tqdm
 
 from .._optimask import optimask
-from ..estimators.ridge import FastRidge
+from ..estimators.ridge import FastRidge, fit_ridge_from_gram
 from ._numba_utils import (
     _imputable_rows,
     _index_to_mask,
@@ -18,9 +18,10 @@ from ._numba_utils import (
     _subset,
     _subset_one_column,
     _trainable_rows,
-    complete_rows_for_cols,
+    complete_rows_excluding,
+    extra_rows_excluding,
+    nan_cols_csc,
     nan_positions,
-    nan_positions_subset,
     nan_positions_subset_cols,
     unique2d,
 )
@@ -328,6 +329,38 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         return pd.DataFrame(data, index=original_index, columns=original_columns)
 
     @staticmethod
+    @np.errstate(all="ignore")
+    def _masked_column_stats(
+        x: np.ndarray,
+        mask_nan: np.ndarray,
+        cols: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Column means and standard deviations over observed values.
+
+        Equivalent to ``np.nanmean``/``np.nanstd`` on ``x[:, cols]`` but with a
+        single full-size temporary instead of several, using a numerically
+        stable two-pass computation. All-NaN columns get mean 0, and zero or
+        undefined scales are replaced by 1 so normalization is a no-op there.
+        """
+        if len(cols) == x.shape[1]:
+            sub_x, sub_mask = x, mask_nan
+        else:
+            sub_x, sub_mask = x[:, cols], mask_nan[:, cols]
+
+        work_dtype = sub_x.dtype if sub_x.dtype == np.float32 else np.float64
+        counts = (len(sub_x) - sub_mask.sum(axis=0)).astype(work_dtype)
+        z = np.where(sub_mask, 0, sub_x).astype(work_dtype, copy=False)
+        means = z.sum(axis=0) / counts
+
+        np.subtract(sub_x, means, out=z, casting="unsafe")
+        z[sub_mask] = 0
+        scales = np.sqrt(np.einsum("ij,ij->j", z, z) / counts)
+
+        means = np.where(np.isnan(means), 0.0, means)
+        scales = np.where((scales == 0) | np.isnan(scales), 1.0, scales)
+        return means, scales
+
+    @staticmethod
     def _group_pattern_rows(indexes: np.ndarray) -> list[np.ndarray]:
         """Group inverse-index labels once instead of rescanning them per pattern."""
         if not len(indexes):
@@ -344,8 +377,6 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         col_to_impute: int,
         mask_nan: np.ndarray,
         mask_rows_to_impute: np.ndarray,
-        iy: np.ndarray,
-        ix: np.ndarray,
         n_nearest_features: int | None,
         scores: np.ndarray | None,
         scores_index: int,
@@ -362,8 +393,6 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             col_to_impute (int): The index of the column to impute.
             mask_nan (np.ndarray): A boolean mask of NaNs for the entire matrix.
             mask_rows_to_impute (np.ndarray): A boolean mask of rows to be imputed.
-            iy (np.ndarray): Row indices of all NaNs.
-            ix (np.ndarray): Column indices of all NaNs.
             n_nearest_features (int | None): The number of features to use.
             scores (np.ndarray | None): The feature selection scores.
             scores_index (int): The index of the column being imputed in the
@@ -397,36 +426,117 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         prediction_groups = self._group_pattern_rows(indexes)
 
         local_mask_nan, local_iy, local_ix = nan_positions(local_train)
-        local_rows = np.arange(len(trainable_rows), dtype=np.uint32)
-        local_cols = np.arange(len(sampled_cols_uint32), dtype=np.uint32)
+        m_local = len(trainable_rows)
+        k_local = len(sampled_cols_uint32)
+        local_rows = np.arange(m_local, dtype=np.uint32)
+        local_cols = np.arange(k_local, dtype=np.uint32)
 
+        row_nan_count = local_mask_nan.sum(axis=1).astype(np.uint32, copy=False)
+        col_ptr, col_rows = nan_cols_csc(local_iy, local_ix, k_local)
+        hits = np.zeros(m_local, dtype=np.uint32)
+        stamp = np.full(m_local, -1, dtype=np.int64)
+        epoch = 0
+
+        is_categorical_target = col_to_impute in categorical_cols
+        # For the default ridge regressor, models are solved from Gram matrices
+        # accumulated once over the globally complete rows plus a small
+        # per-pattern correction, instead of refitting on a large row subset
+        # for every missingness pattern.
+        use_gram = (not is_categorical_target) and type(self.regressor) is FastRidge
+        if use_gram:
+            z_aug = np.empty((m_local, k_local + 2), dtype=np.float32)
+            z_aug[:, :k_local] = local_train
+            z_aug[:, k_local] = local_target
+            z_aug[:, k_local + 1] = 1.0
+            complete0 = np.flatnonzero(row_nan_count == 0).astype(np.uint32, copy=False)
+            z0 = z_aug if len(complete0) == m_local else z_aug[complete0]
+            gram0 = z0.T @ z0
+
+        training_groups = {}
         for pattern, prediction_group in zip(patterns, prediction_groups, strict=False):
             usable_cols_local = local_cols[pattern].astype(np.uint32, copy=False)
             if not len(usable_cols_local):
                 continue
+            excluded_cols_local = local_cols[~pattern].astype(np.uint32, copy=False)
+            epoch += 1
 
-            rows = complete_rows_for_cols(local_mask_nan, usable_cols_local)
-            if len(rows) >= self.min_samples_train:
-                cols = usable_cols_local
-            else:
-                mask_usable_cols = _index_to_mask(usable_cols_local, len(sampled_cols_uint32))
-                iy_trial, ix_trial = nan_positions_subset_cols(local_iy, local_ix, mask_usable_cols)
-                rows, cols = optimask(
-                    iy=iy_trial,
-                    ix=ix_trial,
-                    rows=local_rows,
-                    cols=usable_cols_local,
-                    global_matrix_size=local_train.shape,
+            if use_gram:
+                extras, n_complete = extra_rows_excluding(
+                    row_nan_count, col_ptr, col_rows, excluded_cols_local, hits, stamp, epoch
                 )
+                if n_complete >= self.min_samples_train:
+                    key = (True, usable_cols_local.tobytes())
+                    if key not in training_groups:
+                        training_groups[key] = {
+                            "rows": None,
+                            "gram_extras": extras,
+                            "n_samples": int(n_complete),
+                            "cols": usable_cols_local,
+                            "prediction_groups": [],
+                        }
+                    training_groups[key]["prediction_groups"].append(prediction_group)
+                    continue
+            else:
+                rows = complete_rows_excluding(
+                    row_nan_count, col_ptr, col_rows, excluded_cols_local, hits, stamp, epoch
+                )
+                if len(rows) >= self.min_samples_train:
+                    key = (False, rows.tobytes(), usable_cols_local.tobytes())
+                    if key not in training_groups:
+                        training_groups[key] = {"rows": rows, "cols": usable_cols_local, "prediction_groups": []}
+                    training_groups[key]["prediction_groups"].append(prediction_group)
+                    continue
+
+            mask_usable_cols = _index_to_mask(usable_cols_local, k_local)
+            iy_trial, ix_trial = nan_positions_subset_cols(local_iy, local_ix, mask_usable_cols)
+            rows, cols = optimask(
+                iy=iy_trial,
+                ix=ix_trial,
+                rows=local_rows,
+                cols=usable_cols_local,
+                global_matrix_size=local_train.shape,
+            )
             if (len(rows) < self.min_samples_train) or (not len(cols)):
                 continue  # Not enough data to train a model
 
+            key = (False, rows.tobytes(), cols.tobytes())
+            if key not in training_groups:
+                training_groups[key] = {"rows": rows, "cols": cols, "prediction_groups": []}
+            training_groups[key]["prediction_groups"].append(prediction_group)
+
+        for group in training_groups.values():
+            cols = group["cols"]
+            predict_rows = (
+                group["prediction_groups"][0]
+                if len(group["prediction_groups"]) == 1
+                else np.concatenate(group["prediction_groups"]).astype(np.uint32, copy=False)
+            )
+
+            if group.get("rows") is None:
+                aug_idx = np.concatenate([cols, [k_local, k_local + 1]]).astype(np.uint32, copy=False)
+                gram = gram0[np.ix_(aug_idx, aug_idx)]
+                extras = group["gram_extras"]
+                if extras.size:
+                    z_extra = _subset(X=z_aug, rows=extras, columns=aug_idx)
+                    gram = gram + z_extra.T @ z_extra
+                coef, intercept = fit_ridge_from_gram(
+                    gram=gram,
+                    n_samples=group["n_samples"],
+                    alpha=self.regressor.alpha,
+                    fit_intercept=self.regressor.fit_intercept,
+                )
+                x_pred = _subset(X=local_predict, rows=predict_rows, columns=cols)
+                predictions = x_pred.astype(np.float32, copy=False) @ coef + intercept
+                x_imputed[imputable_rows[predict_rows], col_to_impute] = predictions
+                continue
+
+            rows = group["rows"]
             X_train = _subset(X=local_train, rows=rows, columns=cols)
             y_train = local_target[rows]
-            is_categorical_target = col_to_impute in categorical_cols
+
             if is_categorical_target:
                 if (unique_y := np.unique(y_train)).size < 2:
-                    x_imputed[imputable_rows[prediction_group], col_to_impute] = unique_y[0]
+                    x_imputed[imputable_rows[predict_rows], col_to_impute] = unique_y[0]
                     continue
                 estimator = self.classifier
                 y_train = y_train.astype(np.int64)
@@ -434,10 +544,10 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 estimator = self.regressor
 
             estimator.fit(X=X_train, y=y_train)
-            predictions = estimator.predict(_subset(X=local_predict, rows=prediction_group, columns=cols))
+            predictions = estimator.predict(_subset(X=local_predict, rows=predict_rows, columns=cols))
             if is_categorical_target:
                 predictions = predictions.astype(np.float32)
-            x_imputed[imputable_rows[prediction_group], col_to_impute] = predictions
+            x_imputed[imputable_rows[predict_rows], col_to_impute] = predictions
 
     def __call__(
         self,
@@ -514,6 +624,8 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         mask_rows_to_impute = _mask_index_to_impute(size=m, to_impute=rows_to_impute)
         categorical_cols = set(categorical_targets.keys())
 
+        mask_nan = np.isnan(x)
+
         if normalize:
             if is_df:
                 numeric_cols = []
@@ -526,17 +638,18 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 normalize_cols = np.arange(n, dtype=np.int64)
 
             if normalize_cols.size:
-                norm_means = np.nanmean(x[:, normalize_cols], axis=0)
-                norm_scales = np.nanstd(x[:, normalize_cols], axis=0)
-                norm_means = np.where(np.isnan(norm_means), 0.0, norm_means)
-                norm_scales = np.where((norm_scales == 0) | np.isnan(norm_scales), 1.0, norm_scales)
+                norm_means, norm_scales = self._masked_column_stats(x, mask_nan, normalize_cols)
                 if not is_df:
                     x = x.copy()
-                x[:, normalize_cols] = (x[:, normalize_cols] - norm_means) / norm_scales
+                if normalize_cols.size == n and np.issubdtype(x.dtype, np.floating):
+                    x -= norm_means
+                    x /= norm_scales
+                else:
+                    x[:, normalize_cols] = (x[:, normalize_cols] - norm_means) / norm_scales
 
         if n_nearest_features is not None:
             if self.scoring == "default":
-                scores = scoring(x, cols_to_impute)
+                scores = scoring(x, cols_to_impute, mask_nan)
             else:
                 scores = self.scoring(x, cols_to_impute)
             self.imputation_features_ = {}
@@ -545,7 +658,6 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             self.imputation_features_ = None
 
         x_imputed = x.copy()
-        mask_nan, iy, ix = nan_positions(x)
 
         for i, col in enumerate(tqdm(cols_to_impute, leave=False, disable=(not self.verbose))):
             self._impute_col(
@@ -554,8 +666,6 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 col,
                 mask_nan,
                 mask_rows_to_impute,
-                iy,
-                ix,
                 n_nearest_features,
                 scores,
                 i,
@@ -563,7 +673,11 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             )
 
         if normalize and normalize_cols is not None and normalize_cols.size:
-            x_imputed[:, normalize_cols] = x_imputed[:, normalize_cols] * norm_scales + norm_means
+            if normalize_cols.size == n and np.issubdtype(x_imputed.dtype, np.floating):
+                x_imputed *= norm_scales
+                x_imputed += norm_means
+            else:
+                x_imputed[:, normalize_cols] = x_imputed[:, normalize_cols] * norm_scales + norm_means
 
         if is_df and self.imputation_features_ is not None:
             assert encoded_feature_names is not None

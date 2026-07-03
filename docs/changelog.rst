@@ -1,6 +1,16 @@
 Changelog
 =========
 
+v0.3 (2026-07-04)
+-----------------
+
+- TimeSeriesImputer can infer a regular DatetimeIndex frequency and reinsert missing timestamp rows inside the observed range before imputation.
+- Added optional deterministic calendar/trend features (``add_time_features``, on by default) that stay observed through contiguous timestamp gaps.
+- Training subsets that are identical across missingness patterns are fitted once and reused.
+- Large speedup of the imputation pipeline (about 4.5x on the reference TimeSeriesImputer benchmark) with lower memory usage and unchanged imputation results: default FastRidge models are solved from incrementally accumulated Gram matrices, per-pattern training rows are found from an index of missing positions, normalization statistics and feature-selection scoring are computed from masked sums without full-matrix copies, and lag/lead features are built directly in a preallocated matrix.
+- Fixed excessive memory retention caused by over-allocated NaN-position buffers.
+- Removed dead internal helpers and the unused global NaN-position pipeline.
+
 v0.2.2 (2026-02-11)
 -------------------
 

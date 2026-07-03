@@ -7,8 +7,8 @@
 - `docs/` hosts documentation sources and static assets.
 
 ## Algorithm Overview
-- `optimask` is a heuristic that finds the largest submatrix without NaNs inside a matrix containing NaNs.
-- Imputation then trains standard regression/classification models on that NaN-free subset and predicts missing values in the full data.
+- Rows to impute are grouped by their pattern of observed features; each pattern gets a model trained on the rows complete for those features (solved from an incrementally accumulated Gram matrix for the default `FastRidge` regressor, or via `estimator.fit` on the materialized subset otherwise).
+- `optimask` is a fallback heuristic used when too few complete rows exist: it finds the largest submatrix without NaNs inside a matrix containing NaNs to train on instead.
 
 ## Build, Test, and Development Commands
 - `pip install -e .` installs the package in editable mode for local development.

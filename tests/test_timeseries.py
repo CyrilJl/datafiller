@@ -52,6 +52,46 @@ def test_timeseries_imputer_interpolate(nan_df):
     assert not np.isnan(imputed_df.loc["2020-01-09", "value2"])
 
 
+def test_timeseries_imputer_reindexes_and_imputes_missing_timestamp_block():
+    full_index = pd.date_range("2024-01-01", periods=48, freq="h")
+    t = np.arange(len(full_index), dtype=np.float32)
+    df = pd.DataFrame(
+        {
+            "load": 0.2 * t + np.sin(2 * np.pi * t / 24),
+            "temperature": 10 + np.cos(2 * np.pi * t / 24),
+        },
+        index=full_index,
+    )
+    missing_index = full_index[18:24]
+    df_missing = df.drop(index=missing_index)
+
+    imputer = TimeSeriesImputer(lags=(1, 2, -1, -2), rng=0)
+    imputed_df = imputer(df_missing)
+
+    assert imputed_df.index.equals(full_index)
+    assert not imputed_df.loc[missing_index].isna().any().any()
+    assert (imputed_df.loc[missing_index] - df.loc[missing_index]).abs().to_numpy().mean() < 0.2
+
+
+def test_timeseries_imputer_time_features_do_not_duplicate_user_columns():
+    full_index = pd.date_range("2024-01-01", periods=36, freq="h")
+    t = np.arange(len(full_index), dtype=np.float32)
+    df = pd.DataFrame(
+        {
+            "__time_trend": t,
+            "load": np.sin(2 * np.pi * t / 24),
+        },
+        index=full_index,
+    )
+    df.loc[full_index[10:14], "load"] = np.nan
+
+    imputed_df = TimeSeriesImputer(lags=(1, -1), rng=0)(df)
+
+    assert list(imputed_df.columns) == ["__time_trend", "load"]
+    assert imputed_df.shape == df.shape
+    assert not imputed_df.loc[full_index[10:14], "load"].isna().any()
+
+
 def test_timeseries_imputer_invalid_lags():
     with pytest.raises(ValueError):
         TimeSeriesImputer(lags=[1, 0])
@@ -73,5 +113,5 @@ def test_timeseries_imputer_n_nearest_features_tracking(nan_df):
         assert all(isinstance(f, str) for f in features)
         assert len(features) <= n_nearest_features
         assert col not in features
-        # Check that lagged features are present
-        assert any("_lag_" in f for f in features)
+        # Check that generated temporal context features are present.
+        assert any(("_lag_" in f) or f.startswith("__time_") for f in features)

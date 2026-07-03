@@ -22,7 +22,7 @@ DataFiller is a pragmatic imputation tool: it is unlikely to match the absolute 
 
 ## Key Features
 
-Key features include model-based imputation with lightweight models, mixed data support with one-hot encoding and label recovery, a dedicated ``TimeSeriesImputer`` with lag/lead features, performance-critical sections accelerated by Numba, smart feature selection for training subsets, and scikit-learn compatibility.
+Key features include model-based imputation with lightweight models, mixed data support with one-hot encoding and label recovery, a dedicated ``TimeSeriesImputer`` with lag/lead and calendar features for missing-at-random values and contiguous timestamp gaps, performance-critical sections accelerated by Numba, smart feature selection for training subsets, and scikit-learn compatibility.
 
 ## Installation
 
@@ -66,7 +66,7 @@ print(X_imputed)
 
 ### Imputing a Time Series DataFrame
 
-The ``TimeSeriesImputer`` is designed to work with pandas DataFrames that have a ``DatetimeIndex``. It automatically creates autoregressive features (lags and leads) to improve imputation accuracy.
+The ``TimeSeriesImputer`` is designed to work with pandas DataFrames that have a ``DatetimeIndex``. It automatically creates autoregressive features (lags and leads) to improve imputation accuracy, and can infer a regular frequency to reinsert missing timestamp blocks before imputation.
 
 ```python
 import pandas as pd
@@ -107,6 +107,6 @@ df_imputed = imputer(df)
 
 ## How It Works
 
-DataFiller uses a model-based imputation strategy. For each column containing missing values, it trains a model using the other columns as features. Categorical, boolean, and string columns are one-hot encoded for feature construction, so they can drive the imputation of numerical targets, and are imputed with a classifier before being mapped back to the original labels. The rows used for training are carefully selected to be the largest, most complete rectangular subset of the data, which is found using the [optimask](https://github.com/CyrilJl/OptiMask) algorithm. This ensures that the training data is of the highest possible quality, leading to more accurate imputations.
+DataFiller uses a model-based imputation strategy. For each column containing missing values, it trains a model using the other columns as features. Categorical, boolean, and string columns are one-hot encoded for feature construction, so they can drive the imputation of numerical targets, and are imputed with a classifier before being mapped back to the original labels. Rows to impute are grouped by their pattern of observed features and get one model per pattern, trained on the rows that are complete for that pattern's features; with the default ridge regressor these models are solved efficiently from a shared Gram matrix. When too few complete rows exist, the [optimask](https://github.com/CyrilJl/OptiMask) algorithm finds the largest complete rectangular subset of the data to train on instead. This ensures that the training data is of the highest possible quality, leading to more accurate imputations.
 
 For more details, see the [documentation](https://datafiller.readthedocs.io/).
