@@ -213,7 +213,10 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
 
         Args:
             df: The input DataFrame with a `DatetimeIndex` and missing
-                values (NaNs). The index must have a defined frequency.
+                values (NaNs). If the index has no explicit frequency, a
+                regular one is inferred from the timestamps and any missing
+                timestamps inside the observed range are reinserted as rows
+                to impute.
             rows_to_impute: The rows to impute. Can be an iterable of
                 integer indices, a pandas DatetimeIndex, or None. If None,
                 all rows are considered. Defaults to None.
@@ -236,7 +239,9 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         Raises:
             TypeError: If the input is not a pandas DataFrame or if the index
                 is not a DatetimeIndex.
-            ValueError: If the DataFrame's index does not have a frequency.
+            ValueError: If no regular frequency can be inferred from the
+                index (e.g. unsorted or duplicated timestamps, or irregular
+                gaps), or if the columns are not numeric.
         """
         if not isinstance(df, pd.DataFrame):
             raise TypeError("Input must be a pandas DataFrame.")
