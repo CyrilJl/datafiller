@@ -253,21 +253,47 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         original_cols = df.columns
         n_original_cols = len(original_cols)
 
-        # Create autoregressive features
-        df_with_lags = df
-        shifted_frames = []
-        for lag in self.lags:
-            shifted = df.shift(lag)
-            shifted.columns = [f"{col}_lag_{lag}" for col in original_cols]
-            shifted_frames.append(shifted)
-        if shifted_frames:
-            df_with_lags = pd.concat([df_with_lags, *shifted_frames], axis=1)
+        values = df.to_numpy()
+        if not np.issubdtype(values.dtype, np.floating):
+            try:
+                values = values.astype(np.float64)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("TimeSeriesImputer requires numeric columns.") from exc
+
+        # Create autoregressive (and optional calendar) features directly in a
+        # preallocated matrix instead of concatenating shifted DataFrames.
+        lags = list(self.lags)
+        feature_names = list(original_cols)
+        for lag in lags:
+            feature_names.extend(f"{col}_lag_{lag}" for col in original_cols)
         if self.add_time_features:
-            df_with_lags = pd.concat(
-                [df_with_lags, self._make_time_features(df.index, reserved_names=df_with_lags.columns)],
-                axis=1,
-            )
-        df_with_lags = df_with_lags.dropna(how="all", axis=1)
+            time_features = self._make_time_features(df.index, reserved_names=feature_names)
+            feature_names.extend(time_features.columns)
+        else:
+            time_features = None
+
+        matrix = np.empty((len(df), len(feature_names)), dtype=values.dtype)
+        matrix[:, :n_original_cols] = values
+        for i, lag in enumerate(lags):
+            start = n_original_cols * (i + 1)
+            block = matrix[:, start : start + n_original_cols]
+            n_kept_rows = max(0, len(df) - abs(lag))
+            if lag > 0:
+                block[: len(df) - n_kept_rows] = np.nan
+                block[len(df) - n_kept_rows :] = values[:n_kept_rows]
+            else:
+                block[:n_kept_rows] = values[len(df) - n_kept_rows :]
+                block[n_kept_rows:] = np.nan
+        if time_features is not None:
+            matrix[:, len(feature_names) - time_features.shape[1] :] = time_features.to_numpy(dtype=values.dtype)
+
+        # Equivalent of dropna(how="all", axis=1) on the feature frame.
+        all_nan_cols = np.isnan(matrix).all(axis=0)
+        if all_nan_cols.any():
+            keep = ~all_nan_cols
+            matrix = np.ascontiguousarray(matrix[:, keep])
+            feature_names = [name for name, keep_col in zip(feature_names, keep, strict=True) if keep_col]
+        feature_index = pd.Index(feature_names)
 
         # Process cols_to_impute
         if cols_to_impute is None:
@@ -303,7 +329,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
 
         # Impute the data
         imputed_data = self.multivariate_imputer(
-            df_with_lags.values,
+            matrix,
             rows_to_impute=rows_to_impute,
             cols_to_impute=cols_to_impute_indices,
             n_nearest_features=n_nearest_features,
@@ -312,10 +338,15 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
 
         if self.imputation_features_ is not None:
             self.imputation_features_ = {
-                df_with_lags.columns[col]: df_with_lags.columns[features].tolist()
+                feature_index[col]: feature_index[features].tolist()
                 for col, features in self.imputation_features_.items()
             }
 
-        # Return a DataFrame with the same columns as the original
-        imputed_df = pd.DataFrame(imputed_data, index=df.index, columns=df_with_lags.columns)
+        # Return a DataFrame with the same columns as the original. Slice the
+        # array before wrapping so pandas does not copy the full feature matrix.
+        if feature_index.is_unique:
+            positions = feature_index.get_indexer(original_cols)
+            if (positions >= 0).all():
+                return pd.DataFrame(imputed_data[:, positions], index=df.index, columns=original_cols)
+        imputed_df = pd.DataFrame(imputed_data, index=df.index, columns=feature_index)
         return imputed_df[original_cols]

@@ -36,6 +36,155 @@ def nan_positions(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 
 @njit(boundscheck=False, cache=True)
+def nan_positions_from_mask(mask_nan: np.ndarray, n_nan: int) -> Tuple[np.ndarray, np.ndarray]:
+    """Extract NaN row/column indices from a precomputed mask.
+
+    Allocates exactly `n_nan` entries, unlike :func:`nan_positions` which
+    over-allocates `m * n` and keeps that memory alive through the returned
+    slices.
+
+    Args:
+        mask_nan: Boolean mask of NaNs.
+        n_nan: Number of True entries in the mask.
+
+    Returns:
+        A tuple `(iy, ix)` with the row and column indices of NaNs.
+    """
+    m, n = mask_nan.shape
+    iy, ix = np.empty(n_nan, dtype=np.uint32), np.empty(n_nan, dtype=np.uint32)
+    cnt = 0
+    for i in range(m):
+        for j in range(n):
+            if mask_nan[i, j]:
+                iy[cnt] = i
+                ix[cnt] = j
+                cnt += 1
+    return iy, ix
+
+
+@njit(boundscheck=False, cache=True)
+def nan_cols_csc(iy: np.ndarray, ix: np.ndarray, n_cols: int) -> Tuple[np.ndarray, np.ndarray]:
+    """Group NaN positions by column (CSC-like layout).
+
+    Args:
+        iy: Row indices of NaNs.
+        ix: Column indices of NaNs.
+        n_cols: Number of columns of the matrix.
+
+    Returns:
+        A tuple `(col_ptr, col_rows)` where the NaN rows of column `c` are
+        `col_rows[col_ptr[c]:col_ptr[c + 1]]`.
+    """
+    n_nan = len(ix)
+    col_ptr = np.zeros(n_cols + 1, dtype=np.int64)
+    for k in range(n_nan):
+        col_ptr[ix[k] + 1] += 1
+    for j in range(n_cols):
+        col_ptr[j + 1] += col_ptr[j]
+    fill = col_ptr[:n_cols].copy()
+    col_rows = np.empty(n_nan, dtype=np.uint32)
+    for k in range(n_nan):
+        c = ix[k]
+        col_rows[fill[c]] = iy[k]
+        fill[c] += 1
+    return col_ptr, col_rows
+
+
+@njit(boundscheck=False, cache=True)
+def _mark_rows_with_nan_in_excluded(
+    col_ptr: np.ndarray,
+    col_rows: np.ndarray,
+    excluded_cols: np.ndarray,
+    hits: np.ndarray,
+    stamp: np.ndarray,
+    epoch: np.int64,
+) -> None:
+    """Count, per row, how many of its NaNs fall inside `excluded_cols`."""
+    for j in range(len(excluded_cols)):
+        c = excluded_cols[j]
+        for k in range(col_ptr[c], col_ptr[c + 1]):
+            r = col_rows[k]
+            if stamp[r] != epoch:
+                stamp[r] = epoch
+                hits[r] = 1
+            else:
+                hits[r] += 1
+
+
+@njit(boundscheck=False, cache=True)
+def complete_rows_excluding(
+    row_nan_count: np.ndarray,
+    col_ptr: np.ndarray,
+    col_rows: np.ndarray,
+    excluded_cols: np.ndarray,
+    hits: np.ndarray,
+    stamp: np.ndarray,
+    epoch: np.int64,
+) -> np.ndarray:
+    """Rows whose NaNs (if any) all fall inside `excluded_cols`.
+
+    Equivalent to `complete_rows_for_cols(mask_nan, usable_cols)` where
+    `usable_cols` is the complement of `excluded_cols`, but the cost scales
+    with the number of NaNs in the excluded columns instead of with
+    `n_rows * n_usable_cols`.
+
+    `hits` and `stamp` are scratch buffers of length `n_rows`; `epoch` must be
+    a fresh value for each call so the buffers never need clearing.
+    """
+    _mark_rows_with_nan_in_excluded(col_ptr, col_rows, excluded_cols, hits, stamp, epoch)
+    m = len(row_nan_count)
+    cnt = 0
+    for r in range(m):
+        k = row_nan_count[r]
+        if k == 0 or (stamp[r] == epoch and hits[r] == k):
+            cnt += 1
+    out = np.empty(cnt, dtype=np.uint32)
+    p = 0
+    for r in range(m):
+        k = row_nan_count[r]
+        if k == 0 or (stamp[r] == epoch and hits[r] == k):
+            out[p] = r
+            p += 1
+    return out
+
+
+@njit(boundscheck=False, cache=True)
+def extra_rows_excluding(
+    row_nan_count: np.ndarray,
+    col_ptr: np.ndarray,
+    col_rows: np.ndarray,
+    excluded_cols: np.ndarray,
+    hits: np.ndarray,
+    stamp: np.ndarray,
+    epoch: np.int64,
+) -> Tuple[np.ndarray, np.int64]:
+    """Like :func:`complete_rows_excluding` but only lists rows that have NaNs.
+
+    Returns the rows whose NaNs all fall inside `excluded_cols` while having
+    at least one NaN (the "extra" rows relative to the globally complete
+    rows), together with the total count of complete rows.
+    """
+    _mark_rows_with_nan_in_excluded(col_ptr, col_rows, excluded_cols, hits, stamp, epoch)
+    m = len(row_nan_count)
+    n_extra = 0
+    n_complete = 0
+    for r in range(m):
+        k = row_nan_count[r]
+        if k == 0:
+            n_complete += 1
+        elif stamp[r] == epoch and hits[r] == k:
+            n_extra += 1
+    out = np.empty(n_extra, dtype=np.uint32)
+    p = 0
+    for r in range(m):
+        k = row_nan_count[r]
+        if k > 0 and stamp[r] == epoch and hits[r] == k:
+            out[p] = r
+            p += 1
+    return out, np.int64(n_complete + n_extra)
+
+
+@njit(boundscheck=False, cache=True)
 def nan_positions_subset(
     iy: np.ndarray,
     ix: np.ndarray,

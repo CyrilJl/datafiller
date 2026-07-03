@@ -4,8 +4,15 @@ import pytest
 
 import datafiller.multivariate.imputer as multivariate_imputer_module
 from datafiller.datasets import load_titanic
+from datafiller.estimators.ridge import FastRidge
 from datafiller.multivariate import MultivariateImputer
-from datafiller.multivariate._numba_utils import complete_rows_for_cols
+from datafiller.multivariate._numba_utils import (
+    complete_rows_excluding,
+    complete_rows_for_cols,
+    nan_cols_csc,
+    nan_positions,
+)
+from datafiller.multivariate._scoring import preimpute, scoring
 
 
 @pytest.fixture
@@ -218,6 +225,62 @@ def test_complete_rows_for_cols_returns_rows_without_nans():
     rows = complete_rows_for_cols(mask_nan, np.array([1, 2], dtype=np.uint32))
 
     np.testing.assert_array_equal(rows, np.array([0, 3], dtype=np.uint32))
+
+
+def test_complete_rows_excluding_matches_reference():
+    rng = np.random.default_rng(3)
+    x = rng.normal(size=(200, 12)).astype(np.float32)
+    x[rng.random(x.shape) < 0.15] = np.nan
+
+    mask_nan, iy, ix = nan_positions(x)
+    row_nan_count = mask_nan.sum(axis=1).astype(np.uint32)
+    col_ptr, col_rows = nan_cols_csc(iy, ix, x.shape[1])
+    hits = np.zeros(len(x), dtype=np.uint32)
+    stamp = np.full(len(x), -1, dtype=np.int64)
+    all_cols = np.arange(x.shape[1], dtype=np.uint32)
+
+    for epoch in range(1, 30):
+        usable_mask = rng.random(x.shape[1]) < 0.7
+        usable = all_cols[usable_mask]
+        excluded = all_cols[~usable_mask]
+        expected = complete_rows_for_cols(mask_nan, usable)
+        actual = complete_rows_excluding(row_nan_count, col_ptr, col_rows, excluded, hits, stamp, epoch)
+        np.testing.assert_array_equal(actual, expected)
+
+
+def test_gram_fast_path_matches_materialized_ridge():
+    class MaterializedRidge(FastRidge):
+        """Same math as FastRidge but bypasses the Gram-based fast path."""
+
+    rng = np.random.default_rng(11)
+    latent = rng.normal(size=(500, 4)).astype(np.float32)
+    x_true = latent @ rng.normal(size=(4, 10)).astype(np.float32)
+    x = x_true.copy()
+    x[rng.random(x.shape) < 0.1] = np.nan
+
+    imputed_fast = MultivariateImputer(rng=0)(x)
+    imputed_reference = MultivariateImputer(regressor=MaterializedRidge(), rng=0)(x)
+
+    np.testing.assert_allclose(imputed_fast, imputed_reference, rtol=1e-3, atol=1e-4)
+
+
+def test_scoring_matches_preimpute_reference():
+    rng = np.random.default_rng(5)
+    x = rng.normal(size=(300, 8)).astype(np.float32)
+    x[rng.random(x.shape) < 0.2] = np.nan
+    cols_to_impute = np.array([0, 3, 6])
+
+    with np.errstate(all="ignore"):
+        xp = preimpute(x)
+        xp_standard = (xp - np.mean(xp, axis=0)) / np.std(xp, axis=0)
+        corr = np.dot(xp_standard[:, cols_to_impute].T, xp_standard) / len(x)
+        isfinite = np.isfinite(x).astype(np.float32)
+        in_common = np.dot(isfinite[:, cols_to_impute].T, isfinite) / len(x)
+        expected = in_common * np.abs(corr)
+
+    actual = scoring(x, cols_to_impute)
+
+    np.testing.assert_allclose(actual, expected, rtol=1e-4, atol=1e-6)
 
 
 def test_multivariate_imputer_uses_complete_case_fast_path(monkeypatch):
