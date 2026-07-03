@@ -8,11 +8,24 @@ from datafiller.estimators.ridge import FastRidge
 from datafiller.multivariate import MultivariateImputer
 from datafiller.multivariate._numba_utils import (
     complete_rows_excluding,
-    complete_rows_for_cols,
     nan_cols_csc,
     nan_positions,
 )
-from datafiller.multivariate._scoring import preimpute, scoring
+from datafiller.multivariate._scoring import scoring
+
+
+def _reference_complete_rows(mask_nan: np.ndarray, usable_cols: np.ndarray) -> np.ndarray:
+    """Rows without NaNs in the usable columns (oracle for complete_rows_excluding)."""
+    return np.flatnonzero(~mask_nan[:, usable_cols].any(axis=1)).astype(np.uint32)
+
+
+def _reference_preimpute(x: np.ndarray) -> np.ndarray:
+    """Fill NaNs with column means (oracle for the fused scoring computation)."""
+    xp = x.copy()
+    col_means = np.nanmean(x, axis=0)
+    nan_mask = np.isnan(x)
+    xp[nan_mask] = np.take(col_means, np.where(nan_mask)[1])
+    return xp
 
 
 @pytest.fixture
@@ -211,7 +224,7 @@ def test_multivariate_imputer_n_nearest_features_tracking(nan_array, use_df):
         assert col not in features
 
 
-def test_complete_rows_for_cols_returns_rows_without_nans():
+def test_complete_rows_excluding_returns_rows_without_nans():
     mask_nan = np.array(
         [
             [False, False, False],
@@ -221,8 +234,14 @@ def test_complete_rows_for_cols_returns_rows_without_nans():
         ],
         dtype=bool,
     )
+    iy, ix = np.nonzero(mask_nan)
+    col_ptr, col_rows = nan_cols_csc(iy.astype(np.uint32), ix.astype(np.uint32), mask_nan.shape[1])
+    row_nan_count = mask_nan.sum(axis=1).astype(np.uint32)
+    hits = np.zeros(len(mask_nan), dtype=np.uint32)
+    stamp = np.full(len(mask_nan), -1, dtype=np.int64)
 
-    rows = complete_rows_for_cols(mask_nan, np.array([1, 2], dtype=np.uint32))
+    # Usable columns {1, 2}, i.e. column 0 is excluded.
+    rows = complete_rows_excluding(row_nan_count, col_ptr, col_rows, np.array([0], dtype=np.uint32), hits, stamp, 1)
 
     np.testing.assert_array_equal(rows, np.array([0, 3], dtype=np.uint32))
 
@@ -243,7 +262,7 @@ def test_complete_rows_excluding_matches_reference():
         usable_mask = rng.random(x.shape[1]) < 0.7
         usable = all_cols[usable_mask]
         excluded = all_cols[~usable_mask]
-        expected = complete_rows_for_cols(mask_nan, usable)
+        expected = _reference_complete_rows(mask_nan, usable)
         actual = complete_rows_excluding(row_nan_count, col_ptr, col_rows, excluded, hits, stamp, epoch)
         np.testing.assert_array_equal(actual, expected)
 
@@ -271,7 +290,7 @@ def test_scoring_matches_preimpute_reference():
     cols_to_impute = np.array([0, 3, 6])
 
     with np.errstate(all="ignore"):
-        xp = preimpute(x)
+        xp = _reference_preimpute(x)
         xp_standard = (xp - np.mean(xp, axis=0)) / np.std(xp, axis=0)
         corr = np.dot(xp_standard[:, cols_to_impute].T, xp_standard) / len(x)
         isfinite = np.isfinite(x).astype(np.float32)

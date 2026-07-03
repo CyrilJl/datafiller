@@ -2,24 +2,6 @@ import numpy as np
 
 
 @np.errstate(all="ignore")
-def preimpute(x: np.ndarray) -> np.ndarray:
-    """Performs a simple pre-imputation by filling NaNs with column means.
-
-    Args:
-        x: The array to pre-impute.
-
-    Returns:
-        The array with NaNs filled by column means.
-
-    """
-    xp = x.copy()
-    col_means = np.nanmean(x, axis=0)
-    nan_mask = np.isnan(x)
-    xp[nan_mask] = np.take(col_means, np.where(nan_mask)[1])
-    return xp
-
-
-@np.errstate(all="ignore")
 def scoring(x: np.ndarray, cols_to_impute: np.ndarray, mask_nan: np.ndarray | None = None) -> np.ndarray:
     """Calculates a score for each feature pair to guide feature selection.
 
@@ -54,7 +36,7 @@ def scoring(x: np.ndarray, cols_to_impute: np.ndarray, mask_nan: np.ndarray | No
     z *= valid
 
     # After centering, sum(z**2) / m is the variance of the mean pre-imputed
-    # column, so this reproduces `corr(preimpute(x))` without the copies.
+    # column, so this reproduces its correlation matrix without the copies.
     std = np.sqrt(np.einsum("ij,ij->j", z, z) / m)
     corr = np.dot(z[:, cols_to_impute].T, z) / m
     corr /= np.outer(std[cols_to_impute], std)

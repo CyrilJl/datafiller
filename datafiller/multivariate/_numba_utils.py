@@ -36,33 +36,6 @@ def nan_positions(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 
 @njit(boundscheck=False, cache=True)
-def nan_positions_from_mask(mask_nan: np.ndarray, n_nan: int) -> Tuple[np.ndarray, np.ndarray]:
-    """Extract NaN row/column indices from a precomputed mask.
-
-    Allocates exactly `n_nan` entries, unlike :func:`nan_positions` which
-    over-allocates `m * n` and keeps that memory alive through the returned
-    slices.
-
-    Args:
-        mask_nan: Boolean mask of NaNs.
-        n_nan: Number of True entries in the mask.
-
-    Returns:
-        A tuple `(iy, ix)` with the row and column indices of NaNs.
-    """
-    m, n = mask_nan.shape
-    iy, ix = np.empty(n_nan, dtype=np.uint32), np.empty(n_nan, dtype=np.uint32)
-    cnt = 0
-    for i in range(m):
-        for j in range(n):
-            if mask_nan[i, j]:
-                iy[cnt] = i
-                ix[cnt] = j
-                cnt += 1
-    return iy, ix
-
-
-@njit(boundscheck=False, cache=True)
 def nan_cols_csc(iy: np.ndarray, ix: np.ndarray, n_cols: int) -> Tuple[np.ndarray, np.ndarray]:
     """Group NaN positions by column (CSC-like layout).
 
@@ -123,10 +96,9 @@ def complete_rows_excluding(
 ) -> np.ndarray:
     """Rows whose NaNs (if any) all fall inside `excluded_cols`.
 
-    Equivalent to `complete_rows_for_cols(mask_nan, usable_cols)` where
-    `usable_cols` is the complement of `excluded_cols`, but the cost scales
-    with the number of NaNs in the excluded columns instead of with
-    `n_rows * n_usable_cols`.
+    These are exactly the rows that are complete on the complement of
+    `excluded_cols`, but the cost scales with the number of NaNs in the
+    excluded columns instead of with `n_rows * n_usable_cols`.
 
     `hits` and `stamp` are scratch buffers of length `n_rows`; `epoch` must be
     a fresh value for each call so the buffers never need clearing.
@@ -185,38 +157,6 @@ def extra_rows_excluding(
 
 
 @njit(boundscheck=False, cache=True)
-def nan_positions_subset(
-    iy: np.ndarray,
-    ix: np.ndarray,
-    mask_subset_rows: np.ndarray,
-    mask_subset_cols: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Finds NaN positions within a subset of rows and columns.
-
-    Args:
-        iy: Row indices of all NaNs in the original matrix.
-        ix: Column indices of all NaNs in the original matrix.
-        mask_subset_rows: A boolean mask for rows to consider.
-        mask_subset_cols: A boolean mask for columns to consider.
-
-    Returns:
-        A tuple containing NaN positions within the subset.
-    """
-    n_nan = len(ix)
-    size = min(n_nan, mask_subset_rows.sum() * mask_subset_cols.sum())
-    sub_iy, sub_ix = np.empty(size, np.uint32), np.empty(size, np.uint32)
-    cnt = 0
-    for k in range(n_nan):
-        row, col = iy[k], ix[k]
-        if mask_subset_cols[col] and mask_subset_rows[row]:
-            sub_iy[cnt] = row
-            sub_ix[cnt] = col
-            cnt += 1
-
-    return sub_iy[:cnt], sub_ix[:cnt]
-
-
-@njit(boundscheck=False, cache=True)
 def nan_positions_subset_cols(
     iy: np.ndarray,
     ix: np.ndarray,
@@ -234,24 +174,6 @@ def nan_positions_subset_cols(
             cnt += 1
 
     return sub_iy[:cnt], sub_ix[:cnt]
-
-
-@njit(boundscheck=False, cache=True)
-def complete_rows_for_cols(mask_nan: np.ndarray, cols: np.ndarray) -> np.ndarray:
-    """Return row indices that are complete for all selected columns."""
-    n_rows = mask_nan.shape[0]
-    rows = np.empty(n_rows, dtype=np.uint32)
-    cnt = 0
-    for i in range(n_rows):
-        is_complete = True
-        for j in range(len(cols)):
-            if mask_nan[i, cols[j]]:
-                is_complete = False
-                break
-        if is_complete:
-            rows[cnt] = i
-            cnt += 1
-    return rows[:cnt]
 
 
 @njit(boundscheck=False, cache=True)

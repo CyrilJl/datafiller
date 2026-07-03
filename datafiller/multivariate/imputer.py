@@ -22,7 +22,6 @@ from ._numba_utils import (
     extra_rows_excluding,
     nan_cols_csc,
     nan_positions,
-    nan_positions_from_mask,
     nan_positions_subset_cols,
     unique2d,
 )
@@ -378,8 +377,6 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         col_to_impute: int,
         mask_nan: np.ndarray,
         mask_rows_to_impute: np.ndarray,
-        iy: np.ndarray,
-        ix: np.ndarray,
         n_nearest_features: int | None,
         scores: np.ndarray | None,
         scores_index: int,
@@ -396,8 +393,6 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             col_to_impute (int): The index of the column to impute.
             mask_nan (np.ndarray): A boolean mask of NaNs for the entire matrix.
             mask_rows_to_impute (np.ndarray): A boolean mask of rows to be imputed.
-            iy (np.ndarray): Row indices of all NaNs.
-            ix (np.ndarray): Column indices of all NaNs.
             n_nearest_features (int | None): The number of features to use.
             scores (np.ndarray | None): The feature selection scores.
             scores_index (int): The index of the column being imputed in the
@@ -663,7 +658,6 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             self.imputation_features_ = None
 
         x_imputed = x.copy()
-        iy, ix = nan_positions_from_mask(mask_nan, int(np.count_nonzero(mask_nan)))
 
         for i, col in enumerate(tqdm(cols_to_impute, leave=False, disable=(not self.verbose))):
             self._impute_col(
@@ -672,8 +666,6 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 col,
                 mask_nan,
                 mask_rows_to_impute,
-                iy,
-                ix,
                 n_nearest_features,
                 scores,
                 i,
