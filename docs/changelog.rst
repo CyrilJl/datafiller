@@ -1,8 +1,8 @@
 Changelog
 =========
 
-v0.2.4 (unreleased)
--------------------
+v0.3 (2026-07-04)
+-----------------
 
 - TimeSeriesImputer can infer a regular DatetimeIndex frequency and reinsert missing timestamp rows inside the observed range before imputation.
 - Added optional deterministic calendar/trend features (``add_time_features``, on by default) that stay observed through contiguous timestamp gaps.
