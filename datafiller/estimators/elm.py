@@ -18,12 +18,29 @@ class ExtremeLearningMachine:
     The random projection is sampled lazily for each input width and cached,
     so a single instance can be refit on data with varying numbers of input
     features (as happens inside the imputers) while staying reproducible.
+    Weights and bias are fan-in scaled (`1 / sqrt(n_input_features)`) so the
+    pre-activation variance, and therefore the effective strength of `alpha`,
+    stays consistent across the different input widths the imputers refit
+    this estimator with.
+
+    The hidden width is also capped by the number of training samples seen at
+    fit time (see `min_samples_per_feature`): the imputers refit this
+    estimator on a small, pattern-specific subset of rows for every distinct
+    missingness pattern, and a hidden layer wider than that subset turns the
+    internal ridge fit into a severely underdetermined (more parameters than
+    samples) problem regardless of regularization.
 
     Args:
-        n_features (int): The number of features in the random projection.
+        n_features (int): The maximum number of features in the random
+            projection.
         alpha (float): The regularization strength for the FastRidge regressor.
         random_state (int): A seed for the random number generator for
             reproducibility.
+        min_samples_per_feature (int): The minimum number of training samples
+            required per hidden feature. At fit time, the hidden width is
+            capped to `n_samples // min_samples_per_feature` (at least 1) so
+            it never exceeds what the available data can support. Set to 0
+            to disable the cap and always use `n_features`. Defaults to 5.
     """
 
     def __init__(
@@ -31,27 +48,37 @@ class ExtremeLearningMachine:
         n_features: int = 100,
         alpha: float = 1.0,
         random_state: int = 0,
+        min_samples_per_feature: int = 5,
     ):
         self.n_features = n_features
         self.alpha = alpha
         self.random_state = random_state
+        self.min_samples_per_feature = min_samples_per_feature
         self.projection_ = None
         self.bias_ = None
         self.ridge_ = FastRidge(alpha=self.alpha)
         self._projections: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+        self.n_features_used_ = None
 
     def _projection(self, n_input_features: int) -> tuple[np.ndarray, np.ndarray]:
         """Returns the cached (weights, bias) pair for this input width."""
         cached = self._projections.get(n_input_features)
         if cached is None:
             rng = np.random.RandomState(self.random_state)
+            scale = np.float32(1.0 / np.sqrt(n_input_features))
             cached = (
-                rng.randn(n_input_features, self.n_features).astype(np.float32),
-                rng.randn(self.n_features).astype(np.float32),
+                rng.randn(n_input_features, self.n_features).astype(np.float32) * scale,
+                rng.randn(self.n_features).astype(np.float32) * scale,
             )
             self._projections[n_input_features] = cached
         self.projection_, self.bias_ = cached
         return cached
+
+    def _effective_n_features(self, n_samples: int) -> int:
+        """Caps the hidden width so it never exceeds what `n_samples` can support."""
+        if self.min_samples_per_feature <= 0:
+            return self.n_features
+        return min(self.n_features, max(1, n_samples // self.min_samples_per_feature))
 
     @staticmethod
     def _project(X: np.ndarray, W: np.ndarray, bias: np.ndarray, out: np.ndarray | None = None) -> np.ndarray:
@@ -74,6 +101,11 @@ class ExtremeLearningMachine:
         X = np.ascontiguousarray(X, dtype=np.float32)
         n_samples = X.shape[0]
         W, bias = self._projection(X.shape[1])
+        k = self._effective_n_features(n_samples)
+        self.n_features_used_ = k
+        if k < self.n_features:
+            W = W[:, :k]
+            bias = bias[:k]
 
         if n_samples <= _CHUNK_ROWS:
             self.ridge_.fit(self._project(X, W, bias), y)
@@ -83,7 +115,6 @@ class ExtremeLearningMachine:
         # by chunk and solve the same ridge problem from it, keeping peak
         # memory bounded by the chunk size instead of n_samples.
         y = np.asarray(y, dtype=np.float32)
-        k = self.n_features
         gram = np.zeros((k + 2, k + 2), dtype=np.float64)
         buffer = np.empty((_CHUNK_ROWS, k + 2), dtype=np.float32)
         buffer[:, k + 1] = 1.0
@@ -116,12 +147,16 @@ class ExtremeLearningMachine:
         X = np.ascontiguousarray(X, dtype=np.float32)
         n_samples = X.shape[0]
         W, bias = self._projection(X.shape[1])
+        k = self.n_features_used_ if self.n_features_used_ is not None else self.n_features
+        if k < self.n_features:
+            W = W[:, :k]
+            bias = bias[:k]
 
         if n_samples <= _CHUNK_ROWS:
             return self.ridge_.predict(self._project(X, W, bias))
 
         predictions = np.empty(n_samples, dtype=np.float32)
-        buffer = np.empty((_CHUNK_ROWS, self.n_features), dtype=np.float32)
+        buffer = np.empty((_CHUNK_ROWS, k), dtype=np.float32)
         for start in range(0, n_samples, _CHUNK_ROWS):
             stop = min(start + _CHUNK_ROWS, n_samples)
             projected = self._project(X[start:stop], W, bias, out=buffer[: stop - start])
@@ -143,6 +178,7 @@ class ExtremeLearningMachine:
             "n_features": self.n_features,
             "alpha": self.alpha,
             "random_state": self.random_state,
+            "min_samples_per_feature": self.min_samples_per_feature,
         }
 
     def set_params(self, **params) -> "ExtremeLearningMachine":
