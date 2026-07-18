@@ -44,13 +44,13 @@ def diff1d(index, index_with_nan, permutation, index_split, max_val):
 
     count = 0
     for val in index:
-        if val <= max_val and not to_exclude[val]:
+        if val < max_val and not to_exclude[val]:
             count += 1
 
     result = np.empty(count, dtype=index.dtype)
     pnt = 0
     for val in index:
-        if val <= max_val and not to_exclude[val]:
+        if val < max_val and not to_exclude[val]:
             result[pnt] = val
             pnt += 1
 
@@ -88,21 +88,21 @@ def numba_apply_permutation_inplace(p: np.ndarray, x: np.ndarray):
 
 
 @njit(boundscheck=False, cache=True)
-def _process_index(index: np.ndarray, num: int) -> tuple[np.ndarray, np.ndarray, int]:
-    """Compresses an array of indices into a dense, zero-based array.
+def _process_index(index: np.ndarray, num: int) -> tuple[np.ndarray, int]:
+    """Compresses an array of indices into a dense, zero-based array, in place.
 
     This is useful for creating a mapping from original indices to a smaller,
     contiguous set of indices, for example, when dealing with a subset of
-    rows or columns.
+    rows or columns. `index` is overwritten with the compressed values, which
+    avoids allocating a working copy of the (potentially large) index array.
 
     Args:
-        index: The array of indices to process.
+        index: The array of indices to process. Modified in place.
         num: The maximum value in the index array (e.g., total number of
             rows).
 
     Returns:
         A tuple containing:
-            - ret (np.ndarray): The compressed index array.
             - table_inv (np.ndarray): The inverse mapping to get original
               indices back.
             - cnt (int): The number of unique indices.
@@ -110,7 +110,6 @@ def _process_index(index: np.ndarray, num: int) -> tuple[np.ndarray, np.ndarray,
     size = len(index)
     table = np.zeros(num, dtype=np.uint32)
     table_inv = np.empty(num, dtype=np.uint32)
-    ret = np.empty(size, dtype=np.uint32)
     cnt = np.uint32(0)
 
     for k in range(size):
@@ -119,9 +118,9 @@ def _process_index(index: np.ndarray, num: int) -> tuple[np.ndarray, np.ndarray,
             cnt += 1
             table[elem] = cnt
             table_inv[cnt - 1] = elem
-        ret[k] = table[elem] - 1
+        index[k] = table[elem] - 1
 
-    return ret, table_inv[:cnt], cnt
+    return table_inv[:cnt], cnt
 
 
 def _get_largest_rectangle(heights: np.ndarray, m: int, n: int) -> tuple[int, int, int]:
@@ -151,6 +150,7 @@ def optimask(
     rows: np.ndarray,
     cols: np.ndarray,
     global_matrix_size: tuple[int, int],
+    copy: bool = True,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Finds the largest rectangular area of a matrix for training.
 
@@ -164,15 +164,20 @@ def optimask(
         rows: The rows to consider for the mask.
         cols: The columns to consider for the mask.
         global_matrix_size: The shape of the original matrix (m, n).
+        copy: If False, `iy` and `ix` are used as scratch space and
+            overwritten, halving peak memory. Only pass False when the
+            arrays are not reused afterwards.
 
     Returns:
         A tuple containing the rows and columns to keep for training.
     """
     m, n = global_matrix_size
 
-    # Process row and column indices of NaNs
-    iyp, rows_with_nan, m_nan = _process_index(index=iy, num=m)
-    ixp, cols_with_nan, n_nan = _process_index(index=ix, num=n)
+    # Process row and column indices of NaNs (compression happens in place)
+    iyp = iy.copy() if copy else iy
+    ixp = ix.copy() if copy else ix
+    rows_with_nan, m_nan = _process_index(index=iyp, num=m)
+    cols_with_nan, n_nan = _process_index(index=ixp, num=n)
 
     # For each row with NaNs, find the maximum index of a column with a NaN
     hy = groupby_max(iyp, ixp, m_nan)

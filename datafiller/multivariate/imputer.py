@@ -495,6 +495,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 rows=local_rows,
                 cols=usable_cols_local,
                 global_matrix_size=local_train.shape,
+                copy=False,
             )
             if (len(rows) < self.min_samples_train) or (not len(cols)):
                 continue  # Not enough data to train a model
