@@ -12,7 +12,7 @@ import pytest
 
 torch = pytest.importorskip("torch", reason="GPU tests require the optional torch dependency")
 
-from datafiller import MultivariateImputer, TimeSeriesImputer  # noqa: E402
+from datafiller import ExtremeLearningMachine, MultivariateImputer, TimeSeriesImputer  # noqa: E402
 from datafiller.estimators.ridge import FastRidge  # noqa: E402
 from datafiller.multivariate import _gpu  # noqa: E402
 
@@ -139,4 +139,16 @@ def test_device_none_never_builds_backend():
     x = make_correlated_matrix(m=50, n=5)
     imputer = MultivariateImputer(rng=0)
     imputer(x)
+    assert imputer._gpu_backend is None
+
+
+def test_device_ignored_with_custom_regressor_warns():
+    # The GPU path only supports the default FastRidge; a custom regressor
+    # must fall back to the CPU implementation with a warning (and never
+    # build a backend, so no CUDA device is needed here).
+    x = make_correlated_matrix(m=60, n=5)
+    imputer = MultivariateImputer(rng=0, regressor=ExtremeLearningMachine(), device="cuda")
+    with pytest.warns(UserWarning, match="FastRidge"):
+        out = imputer(x)
+    assert not np.isnan(out).any()
     assert imputer._gpu_backend is None

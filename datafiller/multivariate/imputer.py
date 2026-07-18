@@ -1,5 +1,6 @@
 """Core implementation of the DataFiller imputer."""
 
+import warnings
 from typing import Iterable, Union
 
 import numpy as np
@@ -78,11 +79,12 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             PyTorch dependency (``pip install datafiller[gpu]``). All
             missingness patterns of a column are then solved as batched
             tensor operations, which is considerably faster when many
-            columns are imputed on large matrices. Categorical targets,
-            custom regressors, and patterns with fewer than
-            `min_samples_train` complete rows still use the CPU
-            implementation. If None (default), the pure NumPy/Numba CPU
-            path is used and PyTorch is never imported.
+            columns are imputed on large matrices. Categorical targets and
+            patterns with fewer than `min_samples_train` complete rows
+            still use the CPU implementation, and a custom regressor
+            ignores `device` entirely (a UserWarning is emitted). If None
+            (default), the pure NumPy/Numba CPU path is used and PyTorch
+            is never imported.
 
     Attributes:
         imputation_features_ (dict or None): A dictionary mapping each imputed
@@ -746,7 +748,16 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
 
         x_imputed = x.copy()
 
-        self._gpu_backend = GramBackend(self.device) if self.device is not None else None
+        if self.device is not None and type(self.regressor) is not FastRidge:
+            warnings.warn(
+                f"device={self.device!r} is ignored: the GPU path only supports the default FastRidge "
+                f"regressor, so {type(self.regressor).__name__} runs on the CPU implementation.",
+                UserWarning,
+                stacklevel=2,
+            )
+            self._gpu_backend = None
+        else:
+            self._gpu_backend = GramBackend(self.device) if self.device is not None else None
         try:
             for i, col in enumerate(tqdm(cols_to_impute, leave=False, disable=(not self.verbose))):
                 self._impute_col(
