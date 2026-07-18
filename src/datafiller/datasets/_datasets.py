@@ -19,7 +19,9 @@ def load_titanic() -> pd.DataFrame:
     try:
         import pooch
     except ImportError:
-        raise ImportError("pooch is required to download the dataset. Please install it with `pip install pooch`.")
+        raise ImportError(
+            "pooch is required to download the dataset. Please install it with `pip install pooch`."
+        ) from None
 
     url = "https://raw.githubusercontent.com/mwaskom/seaborn-data/master/titanic.csv"
     known_hash = "md5:56f29cc0b807cb970a914ed075227f94"
@@ -48,7 +50,9 @@ def load_pems_bay() -> pd.DataFrame:
     try:
         import pooch
     except ImportError:
-        raise ImportError("pooch is required to download the dataset. Please install it with `pip install pooch`.")
+        raise ImportError(
+            "pooch is required to download the dataset. Please install it with `pip install pooch`."
+        ) from None
 
     url = "https://zenodo.org/records/5724362/files/PEMS-BAY.csv"
     known_hash = "md5:c8dea58987a5882e946217c22fdb8256"

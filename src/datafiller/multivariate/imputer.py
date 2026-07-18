@@ -1,7 +1,7 @@
 """Core implementation of the DataFiller imputer."""
 
 import warnings
-from typing import Iterable, Union
+from collections.abc import Callable, Iterable
 
 import numpy as np
 import pandas as pd
@@ -120,9 +120,9 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         classifier: ClassifierMixin | None = None,
         verbose: int = 0,
         min_samples_train: int | None = None,
-        rng: Union[int, None] = None,
-        scoring: Union[str, callable] = "default",
-        device: Union[str, None] = None,
+        rng: int | None = None,
+        scoring: str | Callable = "default",
+        device: str | None = None,
     ):
         """
         Args:
@@ -152,11 +152,11 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         self._gpu_backend = None
         self.imputation_features_ = None
 
-    def fit(self, X: Union[np.ndarray, pd.DataFrame], y: None = None) -> "MultivariateImputer":
+    def fit(self, X: np.ndarray | pd.DataFrame, y: None = None) -> "MultivariateImputer":
         """No-op fit for sklearn compatibility."""
         return self
 
-    def transform(self, X: Union[np.ndarray, pd.DataFrame]) -> Union[np.ndarray, pd.DataFrame]:
+    def transform(self, X: np.ndarray | pd.DataFrame) -> np.ndarray | pd.DataFrame:
         """Impute missing values in X using stored configuration."""
         return self(X)
 
@@ -640,12 +640,12 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
 
     def __call__(
         self,
-        x: Union[np.ndarray, pd.DataFrame],
+        x: np.ndarray | pd.DataFrame,
         rows_to_impute: None | int | Iterable[int] | Iterable[str] = None,
         cols_to_impute: None | int | Iterable[int] | Iterable[str] = None,
         n_nearest_features: None | float | int = None,
         normalize: bool = True,
-    ) -> Union[np.ndarray, pd.DataFrame]:
+    ) -> np.ndarray | pd.DataFrame:
         """Imputes missing values in the input data.
 
         The method can handle both NumPy arrays and pandas DataFrames.

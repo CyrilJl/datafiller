@@ -211,8 +211,7 @@ This example loads the PEMS-BAY dataset, punches a large contiguous hole in one 
     df_missing.loc[df_missing.index[start:end], target_col] = np.nan
 
     other_cols = df_missing.columns.drop(target_col)
-    np.random.seed(0)
-    df_missing.loc[:, other_cols] = add_mar(df_missing[other_cols], nan_ratio=0.05)
+    df_missing.loc[:, other_cols] = add_mar(df_missing[other_cols], nan_ratio=0.05, rng=0)
 
     ts_imputer = TimeSeriesImputer(lags=[1, 2, 3, -1, -2, -3], rng=0)
     df_imputed = ts_imputer(df_missing, cols_to_impute=[target_col], n_nearest_features=75)
