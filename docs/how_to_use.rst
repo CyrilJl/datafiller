@@ -156,6 +156,31 @@ include ``rows_to_impute`` and ``cols_to_impute`` to target subsets and ``n_near
 setting ``n_nearest_features`` is recommended to reduce computation time. For a complete list and full descriptions, see the :doc:`api`
 reference.
 
+GPU Acceleration
+================
+
+Both imputers accept an optional ``device`` parameter (e.g. ``device="cuda"``) that solves the default ridge models as batched GPU
+operations instead of a per-pattern Python loop. This is most beneficial when many columns are imputed on medium-to-large matrices,
+where it can be an order of magnitude faster; imputed values match the CPU path up to float32 rounding.
+
+GPU support relies on PyTorch, which is an optional dependency and is only imported when a device is requested:
+
+.. code-block:: bash
+
+    pip install datafiller[gpu]
+
+.. code-block:: python
+
+    from datafiller import MultivariateImputer
+
+    imputer = MultivariateImputer(device="cuda")
+    X_imputed = imputer(X)
+
+The default PyPI build of PyTorch ships CUDA support on Linux; on Windows, install a CUDA-enabled build by following
+`pytorch.org/get-started <https://pytorch.org/get-started/locally/>`_. With the default ``device=None`` the pure NumPy/Numba CPU path
+runs and PyTorch is never imported. Categorical targets, custom regressors, and patterns with fewer than ``min_samples_train``
+complete rows transparently fall back to the CPU implementation.
+
 Time Series Imputer
 ********************
 

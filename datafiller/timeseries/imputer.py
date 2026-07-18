@@ -41,6 +41,11 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         interpolate_gaps_less_than (int, optional): The maximum length of
             gaps to interpolate linearly. If None, no linear interpolation is
             performed. Defaults to None.
+        device (str, optional): Device used to solve the default ridge
+            models, e.g. ``"cuda"``. Requires the optional PyTorch dependency
+            (``pip install datafiller[gpu]``). If None (default), the pure
+            NumPy/Numba CPU path is used. See
+            :class:`~datafiller.multivariate.imputer.MultivariateImputer`.
         add_time_features (bool, optional): Whether to add deterministic time
             features before model-based imputation. These features are fully
             observed after reindexing, which helps fill contiguous missing
@@ -82,6 +87,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         scoring: Union[str, callable] = "default",
         interpolate_gaps_less_than: int = None,
         add_time_features: bool = True,
+        device: Union[str, None] = None,
     ):
         if not isinstance(lags, Iterable) or not all(isinstance(i, int) for i in lags):
             raise ValueError("lags must be an iterable of integers.")
@@ -96,6 +102,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         self.scoring = scoring
         self.interpolate_gaps_less_than = interpolate_gaps_less_than
         self.add_time_features = add_time_features
+        self.device = device
         self._build_multivariate_imputer()
         self.imputation_features_ = None
 
@@ -108,6 +115,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             min_samples_train=min_samples_train,
             rng=self.rng,
             scoring=self.scoring,
+            device=self.device,
         )
 
     def fit(self, X: pd.DataFrame, y: None = None) -> "TimeSeriesImputer":
@@ -120,7 +128,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
 
     def set_params(self, **params) -> "TimeSeriesImputer":
         """Set parameters and refresh dependent objects."""
-        rebuild_keys = {"regressor", "classifier", "min_samples_train", "rng", "verbose", "scoring"}
+        rebuild_keys = {"regressor", "classifier", "min_samples_train", "rng", "verbose", "scoring", "device"}
         rebuild = any(key in params for key in rebuild_keys)
 
         super().set_params(**params)
