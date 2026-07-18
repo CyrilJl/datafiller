@@ -1,9 +1,9 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `datafiller/` contains the library code. Submodules include `estimators/`, `multivariate/`, `timeseries/`, and `datasets/`.
+- `src/datafiller/` contains the library code (src layout). Submodules include `estimators/`, `multivariate/`, `timeseries/`, and `datasets/`.
 - `tests/` holds pytest suites (files named `test_*.py`).
-- `scripts/` contains utility and benchmarking scripts.
+- `scripts/` contains utility and benchmarking scripts; they regenerate the static assets in `docs/_static/` (see `scripts/README.md`).
 - `docs/` hosts documentation sources and static assets.
 
 ## Algorithm Overview
@@ -19,7 +19,8 @@
 ## Coding Style & Naming Conventions
 - Python code follows Ruff formatting rules with a line length of 120 (`pyproject.toml`).
 - Use snake_case for functions and variables, PascalCase for classes, and `test_*.py` for test modules.
-- Keep public APIs re-exported in `datafiller/__init__.py` consistent with module names.
+- Keep public APIs re-exported in `src/datafiller/__init__.py` consistent with module names.
+- `pre-commit install` sets up Ruff format/lint hooks (`.pre-commit-config.yaml`); CI fails on unformatted or unlinted code.
 
 ## Testing Guidelines
 - Testing uses `pytest` with optional coverage via `pytest-cov`.
@@ -33,4 +34,4 @@
 
 ## Security & Configuration Tips
 - Avoid committing generated artifacts like `.coverage`, caches, or large dataset files.
-- If adding new datasets, place them under `datafiller/datasets/` and document their provenance.
+- If adding new datasets, place them under `src/datafiller/datasets/` and document their provenance.

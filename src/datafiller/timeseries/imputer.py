@@ -1,4 +1,4 @@
-from typing import Iterable, Union
+from collections.abc import Callable, Iterable
 
 import numpy as np
 import pandas as pd
@@ -82,12 +82,12 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         regressor: RegressorMixin | None = None,
         classifier: ClassifierMixin | None = None,
         min_samples_train: int | None = None,
-        rng: Union[int, None] = None,
+        rng: int | None = None,
         verbose: int = 0,
-        scoring: Union[str, callable] = "default",
+        scoring: str | Callable = "default",
         interpolate_gaps_less_than: int = None,
         add_time_features: bool = True,
-        device: Union[str, None] = None,
+        device: str | None = None,
     ):
         if not isinstance(lags, Iterable) or not all(isinstance(i, int) for i in lags):
             raise ValueError("lags must be an iterable of integers.")
@@ -211,9 +211,9 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
     def __call__(
         self,
         df: pd.DataFrame,
-        rows_to_impute: Union[None, int, Iterable[int]] = None,
-        cols_to_impute: Union[None, int, str, Iterable[Union[int, str]]] = None,
-        n_nearest_features: Union[None, float, int] = None,
+        rows_to_impute: None | int | Iterable[int] = None,
+        cols_to_impute: None | int | str | Iterable[int | str] = None,
+        n_nearest_features: None | float | int = None,
         before: object = None,
         after: object = None,
     ) -> pd.DataFrame:

@@ -1,13 +1,11 @@
 """Numba-jitted utility functions for the multivariate imputer."""
 
-from typing import Tuple
-
 import numpy as np
 from numba import njit
 
 
 @njit(boundscheck=False, cache=True)
-def nan_positions(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def nan_positions(x: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Finds the positions of NaNs in a 2D array.
 
     Args:
@@ -36,7 +34,7 @@ def nan_positions(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 
 @njit(boundscheck=False, cache=True)
-def nan_cols_csc(iy: np.ndarray, ix: np.ndarray, n_cols: int) -> Tuple[np.ndarray, np.ndarray]:
+def nan_cols_csc(iy: np.ndarray, ix: np.ndarray, n_cols: int) -> tuple[np.ndarray, np.ndarray]:
     """Group NaN positions by column (CSC-like layout).
 
     Args:
@@ -129,7 +127,7 @@ def extra_rows_excluding(
     hits: np.ndarray,
     stamp: np.ndarray,
     epoch: np.int64,
-) -> Tuple[np.ndarray, np.int64]:
+) -> tuple[np.ndarray, np.int64]:
     """Like :func:`complete_rows_excluding` but only lists rows that have NaNs.
 
     Returns the rows whose NaNs all fall inside `excluded_cols` while having
@@ -161,7 +159,7 @@ def nan_positions_subset_cols(
     iy: np.ndarray,
     ix: np.ndarray,
     mask_subset_cols: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """Find NaN positions for a prefiltered row set and a subset of columns."""
     n_nan = len(ix)
     sub_iy, sub_ix = np.empty(n_nan, np.uint32), np.empty(n_nan, np.uint32)
@@ -265,7 +263,7 @@ def _mask_index_to_impute(size: int, to_impute: np.ndarray) -> np.ndarray:
     return ret
 
 
-def unique2d(x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def unique2d(x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Numba-compatible equivalent of `np.unique(x, return_inverse=True, axis=0)`."""
     x_struct = np.ascontiguousarray(x).view(np.dtype((np.void, x.dtype.itemsize * x.shape[1])))
     _, idx, inv = np.unique(x_struct, return_index=True, return_inverse=True)

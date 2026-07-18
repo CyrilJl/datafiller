@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.12.0"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
@@ -7,15 +7,30 @@ name = "datafiller"
 version = "0.3.1"
 description = "A python package for easy data imputation"
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
 authors = [
-  { name="Cyril Joly"},
+  { name = "Cyril Joly" },
+]
+keywords = ["imputation", "missing-data", "nan", "time-series", "machine-learning"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-    "numpy",
-    "numba",
-    "scikit-learn",
-    "tqdm",
-    "pandas",
+    "numpy>=1.24",
+    "numba>=0.59",
+    "scikit-learn>=1.3",
+    "tqdm>=4.65",
+    "pandas>=2.0",
 ]
 
 [project.optional-dependencies]
@@ -27,10 +42,44 @@ test = [
 gpu = [
     "torch>=2.0",
 ]
-
-[tool.ruff]
-line-length = 120
+docs = [
+    "sphinx",
+    "sphinxawesome-theme",
+    "myst-parser",
+]
+dev = [
+    "datafiller[test]",
+    "ruff",
+    "pre-commit",
+]
 
 [project.urls]
 Homepage = "https://github.com/CyrilJl/datafiller"
 Documentation = "https://datafiller.readthedocs.io"
+Repository = "https://github.com/CyrilJl/datafiller"
+Issues = "https://github.com/CyrilJl/datafiller/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/datafiller"]
+
+[tool.ruff]
+line-length = 120
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "NPY", # numpy-specific rules
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.coverage.run]
+source = ["datafiller"]
