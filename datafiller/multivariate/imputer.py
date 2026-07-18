@@ -1,5 +1,6 @@
 """Core implementation of the DataFiller imputer."""
 
+import warnings
 from typing import Iterable, Union
 
 import numpy as np
@@ -11,6 +12,7 @@ from tqdm.auto import tqdm
 
 from .._optimask import optimask
 from ..estimators.ridge import FastRidge, fit_ridge_from_gram
+from ._gpu import GramBackend
 from ._numba_utils import (
     _imputable_rows,
     _index_to_mask,
@@ -72,6 +74,17 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             `(n_cols_to_impute,)`), and return a score matrix of shape
             `(n_cols_to_impute, n_features)`.
             Defaults to 'default'.
+        device (str, optional): Device used to solve the default ridge
+            models, e.g. ``"cuda"`` or ``"cuda:0"``. Requires the optional
+            PyTorch dependency (``pip install datafiller[gpu]``). All
+            missingness patterns of a column are then solved as batched
+            tensor operations, which is considerably faster when many
+            columns are imputed on large matrices. Categorical targets and
+            patterns with fewer than `min_samples_train` complete rows
+            still use the CPU implementation, and a custom regressor
+            ignores `device` entirely (a UserWarning is emitted). If None
+            (default), the pure NumPy/Numba CPU path is used and PyTorch
+            is never imported.
 
     Attributes:
         imputation_features_ (dict or None): A dictionary mapping each imputed
@@ -109,12 +122,14 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         min_samples_train: int | None = None,
         rng: Union[int, None] = None,
         scoring: Union[str, callable] = "default",
+        device: Union[str, None] = None,
     ):
         """
         Args:
             regressor: Regressor used to impute numerical targets. Defaults to ``FastRidge``.
             classifier: Classifier used to impute categorical or string targets.
                 Defaults to ``DecisionTreeClassifier(max_depth=4, random_state=rng)``.
+            device: Optional torch device (e.g. ``"cuda"``) for batched ridge solves.
         """
         self._regressor_default = regressor is None
         self.regressor = regressor or FastRidge()
@@ -133,6 +148,8 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             self.scoring = scoring
         else:
             raise ValueError("`scoring` must be 'default' or a callable.")
+        self.device = device
+        self._gpu_backend = None
         self.imputation_features_ = None
 
     def fit(self, X: Union[np.ndarray, pd.DataFrame], y: None = None) -> "MultivariateImputer":
@@ -417,6 +434,16 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         if not (trainable_rows := _trainable_rows(mask_nan=mask_nan, col=col_to_impute)).size:
             return  # Cannot impute if no training data is available for this column
 
+        is_categorical_target = col_to_impute in categorical_cols
+        # For the default ridge regressor, models are solved from Gram matrices
+        # accumulated over the rows complete on each pattern's usable columns,
+        # instead of refitting on a materialized row subset for every
+        # missingness pattern.
+        use_gram = (not is_categorical_target) and type(self.regressor) is FastRidge
+
+        if use_gram and self._gpu_backend is not None:
+            return self._impute_col_gpu(x, x_imputed, col_to_impute, imputable_rows, trainable_rows, sampled_cols)
+
         sampled_cols_uint32 = sampled_cols.astype(np.uint32, copy=False)
         local_train = _subset(X=x, rows=trainable_rows, columns=sampled_cols_uint32)
         local_target = _subset_one_column(X=x, rows=trainable_rows, col=col_to_impute)
@@ -437,12 +464,8 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         stamp = np.full(m_local, -1, dtype=np.int64)
         epoch = 0
 
-        is_categorical_target = col_to_impute in categorical_cols
-        # For the default ridge regressor, models are solved from Gram matrices
-        # accumulated once over the globally complete rows plus a small
-        # per-pattern correction, instead of refitting on a large row subset
-        # for every missingness pattern.
-        use_gram = (not is_categorical_target) and type(self.regressor) is FastRidge
+        # The Gram of `[X, y, 1]` is accumulated once over the globally
+        # complete rows; each pattern then only adds a small correction.
         if use_gram:
             z_aug = np.empty((m_local, k_local + 2), dtype=np.float32)
             z_aug[:, :k_local] = local_train
@@ -549,6 +572,71 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             if is_categorical_target:
                 predictions = predictions.astype(np.float32)
             x_imputed[imputable_rows[predict_rows], col_to_impute] = predictions
+
+    def _impute_col_gpu(
+        self,
+        x: np.ndarray,
+        x_imputed: np.ndarray,
+        col_to_impute: int,
+        imputable_rows: np.ndarray,
+        trainable_rows: np.ndarray,
+        sampled_cols: np.ndarray,
+    ) -> None:
+        """Device-batched variant of the default-ridge Gram fast path.
+
+        All missingness patterns of the column are solved in one batched pass
+        on ``self.device``; patterns with fewer than `min_samples_train`
+        complete rows fall back to the CPU optimask branch below.
+        """
+        result = self._gpu_backend.impute_column(
+            x=x,
+            col=col_to_impute,
+            trainable_rows=trainable_rows,
+            imputable_rows=imputable_rows,
+            sampled_cols=sampled_cols,
+            alpha=self.regressor.alpha,
+            fit_intercept=self.regressor.fit_intercept,
+            min_samples_train=self.min_samples_train,
+        )
+        if result.row_valid.any():
+            rows_solved = np.flatnonzero(result.row_valid)
+            x_imputed[imputable_rows[rows_solved], col_to_impute] = result.predictions[rows_solved]
+        if result.all_valid:
+            return
+
+        sampled_cols_uint32 = sampled_cols.astype(np.uint32, copy=False)
+        local_train = _subset(X=x, rows=trainable_rows, columns=sampled_cols_uint32)
+        local_target = _subset_one_column(X=x, rows=trainable_rows, col=col_to_impute)
+        local_predict = _subset(X=x, rows=imputable_rows, columns=sampled_cols_uint32)
+        prediction_groups = self._group_pattern_rows(result.indexes)
+        _, local_iy, local_ix = nan_positions(local_train)
+        m_local, k_local = local_train.shape
+        local_rows = np.arange(m_local, dtype=np.uint32)
+        local_cols = np.arange(k_local, dtype=np.uint32)
+
+        for p in np.flatnonzero(~result.pattern_valid):
+            pattern = result.patterns[p]
+            prediction_group = prediction_groups[p]
+            usable_cols_local = local_cols[pattern].astype(np.uint32, copy=False)
+            if not len(usable_cols_local):
+                continue
+            mask_usable_cols = _index_to_mask(usable_cols_local, k_local)
+            iy_trial, ix_trial = nan_positions_subset_cols(local_iy, local_ix, mask_usable_cols)
+            rows, cols = optimask(
+                iy=iy_trial,
+                ix=ix_trial,
+                rows=local_rows,
+                cols=usable_cols_local,
+                global_matrix_size=local_train.shape,
+                copy=False,
+            )
+            if (len(rows) < self.min_samples_train) or (not len(cols)):
+                continue  # Not enough data to train a model
+            X_train = _subset(X=local_train, rows=rows, columns=cols)
+            y_train = local_target[rows]
+            self.regressor.fit(X=X_train, y=y_train)
+            predictions = self.regressor.predict(_subset(X=local_predict, rows=prediction_group, columns=cols))
+            x_imputed[imputable_rows[prediction_group], col_to_impute] = predictions
 
     def __call__(
         self,
@@ -660,18 +748,33 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
 
         x_imputed = x.copy()
 
-        for i, col in enumerate(tqdm(cols_to_impute, leave=False, disable=(not self.verbose))):
-            self._impute_col(
-                x,
-                x_imputed,
-                col,
-                mask_nan,
-                mask_rows_to_impute,
-                n_nearest_features,
-                scores,
-                i,
-                categorical_cols,
+        if self.device is not None and type(self.regressor) is not FastRidge:
+            warnings.warn(
+                f"device={self.device!r} is ignored: the GPU path only supports the default FastRidge "
+                f"regressor, so {type(self.regressor).__name__} runs on the CPU implementation.",
+                UserWarning,
+                stacklevel=2,
             )
+            self._gpu_backend = None
+        else:
+            self._gpu_backend = GramBackend(self.device) if self.device is not None else None
+        try:
+            for i, col in enumerate(tqdm(cols_to_impute, leave=False, disable=(not self.verbose))):
+                self._impute_col(
+                    x,
+                    x_imputed,
+                    col,
+                    mask_nan,
+                    mask_rows_to_impute,
+                    n_nearest_features,
+                    scores,
+                    i,
+                    categorical_cols,
+                )
+        finally:
+            if self._gpu_backend is not None:
+                self._gpu_backend.release()
+                self._gpu_backend = None
 
         if normalize and normalize_cols is not None and normalize_cols.size:
             if normalize_cols.size == n and np.issubdtype(x_imputed.dtype, np.floating):

@@ -105,6 +105,24 @@ imputer = MultivariateImputer(regressor=ExtremeLearningMachine())
 df_imputed = imputer(df)
 ```
 
+### GPU Acceleration (optional)
+
+The default ridge models can be solved as batched GPU operations by passing `device="cuda"`. This pays off when many columns are imputed on medium-to-large matrices (7-12x measured on an RTX 4060 when imputing all 250 columns of 30k-100k row matrices); imputed values match the CPU path up to float32 rounding.
+
+GPU support relies on PyTorch, which is an optional dependency:
+
+```bash
+pip install datafiller[gpu]
+# or install a build matching your CUDA setup: https://pytorch.org/get-started/locally/
+```
+
+```python
+imputer = MultivariateImputer(device="cuda")
+X_imputed = imputer(X)
+```
+
+Everything else is unchanged: with the default `device=None`, PyTorch is never imported and the pure NumPy/Numba CPU path runs. Categorical targets, custom regressors, and patterns with too few complete rows transparently fall back to the CPU implementation.
+
 ## How It Works
 
 DataFiller uses a model-based imputation strategy. For each column containing missing values, it trains a model using the other columns as features. Categorical, boolean, and string columns are one-hot encoded for feature construction, so they can drive the imputation of numerical targets, and are imputed with a classifier before being mapped back to the original labels. Rows to impute are grouped by their pattern of observed features and get one model per pattern, trained on the rows that are complete for that pattern's features; with the default ridge regressor these models are solved efficiently from a shared Gram matrix. When too few complete rows exist, the [optimask](https://github.com/CyrilJl/OptiMask) algorithm finds the largest complete rectangular subset of the data to train on instead. This ensures that the training data is of the highest possible quality, leading to more accurate imputations.

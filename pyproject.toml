@@ -24,6 +24,9 @@ test = [
     "pytest-cov",
     "pooch",
 ]
+gpu = [
+    "torch>=2.0",
+]
 
 [tool.ruff]
 line-length = 120
