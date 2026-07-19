@@ -27,6 +27,14 @@ from ._numba_utils import (
     nan_positions_subset_cols,
     unique2d,
 )
+from ._polars import (
+    decode_polars_dataframe,
+    encode_polars_dataframe,
+    is_polars_dataframe,
+    is_polars_lazyframe,
+    polars_cols_to_indices,
+    validate_polars_rows,
+)
 from ._scoring import scoring
 from ._utils import (
     _dataframe_cols_to_impute_to_indices,
@@ -42,8 +50,8 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
     This class uses a model-based approach to fill in missing values, where
     each feature with missing values is predicted using other features in the
     dataset. It is designed to be efficient, using Numba for critical parts
-    and finding optimal data subsets for model training. When a pandas
-    DataFrame contains categorical, string, or boolean columns, they are
+    and finding optimal data subsets for model training. When a pandas or
+    Polars DataFrame contains categorical, string, or boolean columns, they are
     one-hot encoded internally and imputed with a classifier before returning
     the original column layout.
 
@@ -111,7 +119,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         imputation_features_ (dict or None): A dictionary mapping each imputed
             column to the features used to impute it. This attribute is only
             populated when `n_nearest_features` is not None. If the input is a
-            pandas DataFrame, the keys and values will be column names. If the
+            pandas or Polars DataFrame, the keys and values will be column names. If the
             input is a NumPy array, they will be integer indices.
 
     Examples:
@@ -186,11 +194,11 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         self._gpu_backend = None
         self.imputation_features_ = None
 
-    def fit(self, X: np.ndarray | pd.DataFrame, y: None = None) -> "MultivariateImputer":
+    def fit(self, X, y: None = None) -> "MultivariateImputer":
         """No-op fit for sklearn compatibility."""
         return self
 
-    def transform(self, X: np.ndarray | pd.DataFrame) -> np.ndarray | pd.DataFrame:
+    def transform(self, X):
         """Impute missing values in X using stored configuration."""
         return self(X)
 
@@ -710,28 +718,29 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
 
     def __call__(
         self,
-        x: np.ndarray | pd.DataFrame,
+        x,
         rows_to_impute: None | int | Iterable[int] | Iterable[str] = None,
         cols_to_impute: None | int | Iterable[int] | Iterable[str] = None,
         n_nearest_features: None | float | int = None,
         normalize: bool = True,
-    ) -> np.ndarray | pd.DataFrame:
+    ):
         """Imputes missing values in the input data.
 
-        The method can handle both NumPy arrays and pandas DataFrames.
+        The method handles NumPy arrays and eager pandas or Polars DataFrames.
 
         Args:
             x: The input data matrix with missing values (NaNs).
-                Can be a numpy array or a pandas DataFrame.
+                Can be a NumPy array or an eager pandas or Polars DataFrame.
             rows_to_impute: The rows to impute. The interpretation of this
                 argument depends on the type of `x`.
                 - If `x` is a NumPy array, this must be a list of integer indices.
                 - If `x` is a pandas DataFrame, this must be a list of index labels.
+                - If `x` is a Polars DataFrame, this must be a list of integer row positions.
                 If None, all rows are considered for imputation. Defaults to None.
             cols_to_impute: The columns to impute. The interpretation of this
                 argument depends on the type of `x`.
                 - If `x` is a NumPy array, this must be a list of integer indices.
-                - If `x` is a pandas DataFrame, this must be a list of column labels.
+                - If `x` is a pandas or Polars DataFrame, this must be a list of column names.
                 If None, all columns are considered for imputation. Defaults to None.
             n_nearest_features: The number of features to use for
                 imputation. If it's an int, it's the absolute number of
@@ -743,9 +752,14 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
 
         Returns:
             The imputed data matrix. The return type will match the input type
-            (NumPy array or pandas DataFrame).
+            (NumPy array, pandas DataFrame, or Polars DataFrame).
         """
-        is_df = isinstance(x, pd.DataFrame)
+        if is_polars_lazyframe(x):
+            raise TypeError("Polars LazyFrame input is not supported; call collect() before imputation.")
+
+        is_pandas_df = isinstance(x, pd.DataFrame)
+        is_polars_df = is_polars_dataframe(x)
+        is_df = is_pandas_df or is_polars_df
         categorical_targets: dict[int, list] = {}
         encoded_feature_names: list[str] | None = None
         encoded_index_to_original: dict[int, str] = {}
@@ -756,8 +770,9 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         normalize_cols = None
         norm_means = None
         norm_scales = None
+        polars_metadata = None
 
-        if is_df:
+        if is_pandas_df:
             original_index = x.index
             original_columns = x.columns
             rows_to_impute = _dataframe_rows_to_impute_to_indices(rows_to_impute, original_index)
@@ -771,6 +786,20 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             encoded_feature_names = encoded["encoded_feature_names"]
             encoded_index_to_original = encoded["encoded_index_to_original"]
             original_dtypes = encoded["original_dtypes"]
+            cols_to_impute = np.array([main_column_indices[idx] for idx in cols_to_impute_processed], dtype=np.int64)
+        elif is_polars_df:
+            original_columns = list(x.columns)
+            rows_to_impute = validate_polars_rows(rows_to_impute, x.height)
+            cols_to_impute_df = polars_cols_to_indices(cols_to_impute, original_columns)
+            cols_to_impute_processed = _process_to_impute(size=len(original_columns), to_impute=cols_to_impute_df)
+
+            polars_metadata = encode_polars_dataframe(x)
+            x = polars_metadata["data"]
+            main_column_indices = polars_metadata["main_column_indices"]
+            categorical_targets = polars_metadata["categorical_targets"]
+            encoded_feature_names = polars_metadata["encoded_feature_names"]
+            encoded_index_to_original = polars_metadata["encoded_index_to_original"]
+            original_dtypes = polars_metadata["original_dtypes"]
             cols_to_impute = np.array([main_column_indices[idx] for idx in cols_to_impute_processed], dtype=np.int64)
         else:
             x = np.asarray(x)
@@ -787,12 +816,15 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
 
         if normalize:
             if is_df:
-                numeric_cols = []
-                for i, col in enumerate(original_columns):
-                    dtype = original_dtypes[col]
-                    if is_integer_dtype(dtype) or is_float_dtype(dtype):
-                        numeric_cols.append(main_column_indices[i])
-                normalize_cols = np.array(numeric_cols, dtype=np.int64)
+                if is_polars_df:
+                    normalize_cols = polars_metadata["numeric_main_indices"]
+                else:
+                    numeric_cols = []
+                    for i, col in enumerate(original_columns):
+                        dtype = original_dtypes[col]
+                        if is_integer_dtype(dtype) or is_float_dtype(dtype):
+                            numeric_cols.append(main_column_indices[i])
+                    normalize_cols = np.array(numeric_cols, dtype=np.int64)
             else:
                 normalize_cols = np.arange(n, dtype=np.int64)
 
@@ -865,7 +897,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 for col, features in self.imputation_features_.items()
             }
 
-        if is_df:
+        if is_pandas_df:
             return self._decode_dataframe(
                 x_imputed=x_imputed,
                 original_index=original_index,
@@ -874,5 +906,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 categorical_targets=categorical_targets,
                 original_dtypes=original_dtypes,
             )
+        if is_polars_df:
+            return decode_polars_dataframe(x_imputed, polars_metadata)
 
         return x_imputed
