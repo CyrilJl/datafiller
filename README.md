@@ -32,6 +32,12 @@ Install DataFiller using pip or conda:
 pip install datafiller
 ```
 
+Install the optional Polars integration with:
+
+```bash
+pip install "datafiller[polars]"
+```
+
 ```bash
 conda install -c conda-forge datafiller
 ```
@@ -104,6 +110,38 @@ df = load_titanic()
 imputer = MultivariateImputer(regressor=ExtremeLearningMachine())
 df_imputed = imputer(df)
 ```
+
+### Using Polars
+
+Both imputers accept eager Polars DataFrames and return Polars DataFrames. The multivariate imputer uses integer row positions and
+column names for targeted imputation:
+
+```python
+import polars as pl
+from datafiller import MultivariateImputer
+
+df = pl.DataFrame({"temperature": [18.0, None, 21.0], "weather": ["sun", "rain", "sun"]})
+df_imputed = MultivariateImputer()(df)
+```
+
+For time series, configure the Date or Datetime column explicitly. The timestamp column is retained in the result and missing timestamps
+inside a regular series are reinserted before imputation:
+
+```python
+from datetime import datetime, timedelta
+
+import polars as pl
+from datafiller import TimeSeriesImputer
+
+df = pl.DataFrame({
+    "timestamp": [datetime(2024, 1, 1) + timedelta(hours=i) for i in range(24)],
+    "value": [float(i) if i != 12 else None for i in range(24)],
+})
+imputer = TimeSeriesImputer(time_column="timestamp", lags=[1, -1])
+df_imputed = imputer(df)
+```
+
+Polars `LazyFrame` input is not supported because model fitting requires materializing the data; call `collect()` first.
 
 ### GPU Acceleration (optional)
 

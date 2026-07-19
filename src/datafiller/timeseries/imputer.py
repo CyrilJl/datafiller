@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin
 
+from ..multivariate._polars import is_polars_dataframe, is_polars_lazyframe
 from ..multivariate.imputer import MultivariateImputer
 from ._utils import interpolate_small_gaps
 
@@ -53,6 +54,9 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             features before model-based imputation. These features are fully
             observed after reindexing, which helps fill contiguous missing
             timestamp blocks. Defaults to True.
+        time_column (str, optional): Name of the Date or Datetime column that
+            represents time for a Polars DataFrame. Required for Polars input;
+            pandas input continues to use its DatetimeIndex. Defaults to None.
 
     Attributes:
         imputation_features_ (dict or None): A dictionary mapping each imputed
@@ -92,11 +96,14 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         interpolate_gaps_less_than: int = None,
         add_time_features: bool = True,
         device: str | None = None,
+        time_column: str | None = None,
     ):
         if not isinstance(lags, Iterable) or not all(isinstance(i, int) for i in lags):
             raise ValueError("lags must be an iterable of integers.")
         if 0 in lags:
             raise ValueError("lags cannot contain 0.")
+        if time_column is not None and not isinstance(time_column, str):
+            raise ValueError("time_column must be a string or None.")
         self.lags = lags
         self.regressor = regressor
         self.classifier = classifier
@@ -108,6 +115,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         self.interpolate_gaps_less_than = interpolate_gaps_less_than
         self.add_time_features = add_time_features
         self.device = device
+        self.time_column = time_column
         self._build_multivariate_imputer()
         self.imputation_features_ = None
 
@@ -123,16 +131,18 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             device=self.device,
         )
 
-    def fit(self, X: pd.DataFrame, y: None = None) -> "TimeSeriesImputer":
+    def fit(self, X, y: None = None) -> "TimeSeriesImputer":
         """No-op fit for sklearn compatibility."""
         return self
 
-    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+    def transform(self, X):
         """Impute missing values in X using stored configuration."""
         return self(X)
 
     def set_params(self, **params) -> "TimeSeriesImputer":
         """Set parameters and refresh dependent objects."""
+        if "time_column" in params and params["time_column"] is not None and not isinstance(params["time_column"], str):
+            raise ValueError("time_column must be a string or None.")
         rebuild_keys = {
             "regressor",
             "classifier",
@@ -222,26 +232,117 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
 
         return pd.DataFrame(features, index=index)
 
+    def _polars_to_pandas(self, df) -> tuple[pd.DataFrame, dict]:
+        """Materialize a numeric Polars time series on a pandas DatetimeIndex."""
+        import polars as pl
+
+        if self.time_column is None:
+            raise ValueError("time_column must be set when TimeSeriesImputer receives a Polars DataFrame.")
+        if self.time_column not in df.columns:
+            raise ValueError(f"time_column {self.time_column!r} was not found in the Polars DataFrame.")
+
+        time_series = df.get_column(self.time_column)
+        if time_series.dtype.base_type() not in {pl.Date, pl.Datetime}:
+            raise TypeError(
+                f"Polars time_column must have Date or Datetime dtype, got {time_series.dtype} for "
+                f"{self.time_column!r}."
+            )
+        if time_series.null_count():
+            raise ValueError("Polars time_column cannot contain null values.")
+
+        data_columns = [column for column in df.columns if column != self.time_column]
+        if not data_columns:
+            raise ValueError("A Polars time series must contain at least one data column besides time_column.")
+        unsupported = [column for column in data_columns if not df.schema[column].is_numeric()]
+        if unsupported:
+            raise ValueError(f"TimeSeriesImputer requires numeric data columns; unsupported columns: {unsupported}")
+
+        index = pd.DatetimeIndex(time_series.to_list(), name=self.time_column)
+        data = {column: df.get_column(column).to_numpy() for column in data_columns}
+        pandas_df = pd.DataFrame(data, index=index)
+        metadata = {
+            "columns": list(df.columns),
+            "data_columns": data_columns,
+            "dtypes": dict(df.schema),
+            "original_timestamps": set(index),
+            "null_timestamps": {
+                column: set(index[df.get_column(column).is_null().to_numpy()]) for column in data_columns
+            },
+        }
+        return pandas_df, metadata
+
+    def _pandas_to_polars(self, df: pd.DataFrame, metadata: dict):
+        """Restore an imputed pandas working frame to its original Polars schema."""
+        import polars as pl
+
+        timestamps = list(df.index)
+        output = {}
+        for column in metadata["columns"]:
+            dtype = metadata["dtypes"][column]
+            if column == self.time_column:
+                time_values = (
+                    [timestamp.date() for timestamp in timestamps] if dtype.base_type() == pl.Date else timestamps
+                )
+                output[column] = pl.Series(column, time_values, dtype=dtype)
+                continue
+
+            values = df[column].to_numpy()
+            if dtype.is_integer():
+                decoded = [None if np.isnan(value) else int(np.rint(value)) for value in values]
+            else:
+                null_timestamps = metadata["null_timestamps"][column]
+                original_timestamps = metadata["original_timestamps"]
+                decoded = [
+                    None
+                    if np.isnan(value) and (timestamp in null_timestamps or timestamp not in original_timestamps)
+                    else value
+                    for timestamp, value in zip(timestamps, values, strict=True)
+                ]
+            output[column] = pl.Series(column, decoded, dtype=dtype)
+        return pl.DataFrame(output).select(metadata["columns"])
+
+    @staticmethod
+    def _polars_rows_to_indices(rows_to_impute, index: pd.DatetimeIndex):
+        """Resolve Polars row positions or timestamp values on the regularized grid."""
+        if rows_to_impute is None or isinstance(rows_to_impute, (int, np.integer)):
+            return rows_to_impute
+
+        if isinstance(rows_to_impute, str) or not isinstance(rows_to_impute, Iterable):
+            values = [rows_to_impute]
+        else:
+            values = list(rows_to_impute)
+        if all(isinstance(value, (int, np.integer)) for value in values):
+            return values
+
+        timestamps = pd.DatetimeIndex(pd.to_datetime(values))
+        positions = index.get_indexer(timestamps)
+        if np.any(positions == -1):
+            missing = [value for value, position in zip(values, positions, strict=True) if position == -1]
+            raise ValueError(f"Timestamps not found in the regularized time grid: {missing}")
+        return positions
+
     def __call__(
         self,
-        df: pd.DataFrame,
+        df,
         rows_to_impute: None | int | Iterable[int] = None,
         cols_to_impute: None | int | str | Iterable[int | str] = None,
         n_nearest_features: None | float | int = None,
         before: object = None,
         after: object = None,
-    ) -> pd.DataFrame:
+    ):
         """Imputes missing values in a time series DataFrame.
 
         Args:
-            df: The input DataFrame with a `DatetimeIndex` and missing
-                values (NaNs). If the index has no explicit frequency, a
+            df: A pandas DataFrame with a DatetimeIndex, or an eager Polars
+                DataFrame with the Date/Datetime column configured by
+                ``time_column``. If the time axis has no explicit frequency, a
                 regular one is inferred from the timestamps and any missing
                 timestamps inside the observed range are reinserted as rows
                 to impute.
             rows_to_impute: The rows to impute. Can be an iterable of
-                integer indices, a pandas DatetimeIndex, or None. If None,
-                all rows are considered. Defaults to None.
+                integer positions, timestamp values, a pandas DatetimeIndex,
+                or None. Polars integer positions refer to the regularized
+                output grid. If None, all rows are considered. Defaults to None.
             cols_to_impute: The indices or names of columns
                 to impute. If None, all columns are considered. Defaults to None.
             n_nearest_features: The number of features to use for
@@ -256,21 +357,41 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
                 parsed by ``lambda x: pd.to_datetime(str(x))``. Defaults to None.
 
         Returns:
-            The imputed DataFrame with the same columns as the original.
+            The imputed DataFrame, matching the input dataframe implementation.
 
         Raises:
-            TypeError: If the input is not a pandas DataFrame or if the index
-                is not a DatetimeIndex.
+            TypeError: If the input is unsupported or its time axis is invalid.
             ValueError: If no regular frequency can be inferred from the
                 index (e.g. unsorted or duplicated timestamps, or irregular
                 gaps), or if the columns are not numeric.
         """
-        if not isinstance(df, pd.DataFrame):
-            raise TypeError("Input must be a pandas DataFrame.")
-        if not isinstance(df.index, pd.DatetimeIndex):
-            raise TypeError("DataFrame index must be a DatetimeIndex.")
+        if is_polars_lazyframe(df):
+            raise TypeError("Polars LazyFrame input is not supported; call collect() before imputation.")
+        is_polars_df = is_polars_dataframe(df)
+        polars_metadata = None
+        if is_polars_df:
+            polars_rows_to_impute = rows_to_impute
+            df, polars_metadata = self._polars_to_pandas(df)
+        else:
+            if not isinstance(df, pd.DataFrame):
+                raise TypeError("Input must be a pandas or eager Polars DataFrame.")
+            if not isinstance(df.index, pd.DatetimeIndex):
+                raise TypeError("DataFrame index must be a DatetimeIndex.")
 
         df = self._regularize_index(df)
+
+        if is_polars_df:
+            rows_to_impute = self._polars_rows_to_indices(polars_rows_to_impute, df.index)
+            if cols_to_impute is not None:
+                requested_columns = (
+                    [cols_to_impute]
+                    if isinstance(cols_to_impute, str) or not isinstance(cols_to_impute, Iterable)
+                    else list(cols_to_impute)
+                )
+                if not all(isinstance(column, str) for column in requested_columns):
+                    raise ValueError("cols_to_impute must contain column names for a Polars DataFrame.")
+                if self.time_column in requested_columns:
+                    raise ValueError("The Polars time_column cannot be imputed.")
 
         if self.interpolate_gaps_less_than is not None:
             df = df.copy()
@@ -374,6 +495,8 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         if feature_index.is_unique:
             positions = feature_index.get_indexer(original_cols)
             if (positions >= 0).all():
-                return pd.DataFrame(imputed_data[:, positions], index=df.index, columns=original_cols)
+                result = pd.DataFrame(imputed_data[:, positions], index=df.index, columns=original_cols)
+                return self._pandas_to_polars(result, polars_metadata) if is_polars_df else result
         imputed_df = pd.DataFrame(imputed_data, index=df.index, columns=feature_index)
-        return imputed_df[original_cols]
+        result = imputed_df[original_cols]
+        return self._pandas_to_polars(result, polars_metadata) if is_polars_df else result

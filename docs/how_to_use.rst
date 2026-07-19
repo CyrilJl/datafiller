@@ -8,8 +8,27 @@ This guide provides detailed examples on how to use the ``MultivariateImputer`` 
 Multivariate Imputer
 ********************
 
-The ``MultivariateImputer`` is the core of the library, designed to impute missing values in a 2D NumPy array or pandas DataFrame.
+The ``MultivariateImputer`` is the core of the library, designed to impute missing values in a 2D NumPy array or eager pandas or Polars DataFrame.
 It automatically handles mixed numerical, boolean, and categorical/string columns by one-hot encoding non-numerical features internally so they can help impute other columns, then returning the original schema.
+
+Polars DataFrames
+=================
+
+Install the optional integration with ``pip install "datafiller[polars]"``. Polars inputs return Polars outputs, preserve column order and
+supported dtypes, and treat both ``null`` and floating-point ``NaN`` as missing. ``rows_to_impute`` contains integer row positions and
+``cols_to_impute`` contains column names. Numeric, Boolean, String, Categorical, and Enum columns are supported. LazyFrames must be
+collected before imputation.
+
+.. code-block:: python
+
+    import polars as pl
+    from datafiller import MultivariateImputer
+
+    df = pl.DataFrame({
+        "value": [1.0, None, 3.0, 4.0],
+        "group": ["a", "a", None, "b"],
+    })
+    df_imputed = MultivariateImputer()(df)
 
 Titanic Mixed-Feature Example
 =============================
@@ -191,6 +210,29 @@ Time Series Imputer
 ********************
 
 The ``TimeSeriesImputer`` is a wrapper around the ``MultivariateImputer`` that is specifically designed for time series data. It can infer a regular ``DatetimeIndex`` frequency, reinsert missing timestamp rows inside the observed range, and add low-cost calendar features that remain observed through contiguous gaps.
+
+With Polars, pass an eager DataFrame and configure its Date or Datetime column through ``time_column``. The timestamp column remains in
+the returned Polars DataFrame. Row selection accepts positions on the regularized output grid or timestamp values; column selection uses
+names and cannot target the timestamp column.
+
+.. code-block:: python
+
+    import polars as pl
+    from datafiller import TimeSeriesImputer
+
+    df = pl.DataFrame({
+        "timestamp": pl.datetime_range(
+            start=pl.datetime(2024, 1, 1),
+            end=pl.datetime(2024, 1, 2),
+            interval="1h",
+            eager=True,
+        ),
+        "value": [float(i) for i in range(25)],
+    }).with_columns(
+        pl.when(pl.int_range(pl.len()) == 12).then(None).otherwise("value").alias("value")
+    )
+
+    df_imputed = TimeSeriesImputer(time_column="timestamp", lags=[1, -1])(df)
 
 PEMS-BAY Example
 ================

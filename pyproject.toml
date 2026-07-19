@@ -42,6 +42,9 @@ test = [
 gpu = [
     "torch>=2.0",
 ]
+polars = [
+    "polars>=1.0",
+]
 docs = [
     "sphinx",
     "sphinxawesome-theme",
