@@ -2,6 +2,7 @@
 
 import warnings
 from collections.abc import Callable, Iterable
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -12,6 +13,7 @@ from tqdm.auto import tqdm
 
 from .._optimask import optimask
 from ..estimators.ridge import FastRidge, fit_ridge_from_gram
+from ..exceptions import DataFillerTypeError, DataFillerValueError
 from ._gpu import GramBackend
 from ._numba_utils import (
     _imputable_rows,
@@ -151,7 +153,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
     @staticmethod
     def _validate_fallback(fallback: str | None) -> str | None:
         if fallback not in (None, "simple"):
-            raise ValueError(f"fallback must be 'simple' or None, got {fallback!r}")
+            raise DataFillerValueError(f"fallback must be 'simple' or None, got {fallback!r}")
         return fallback
 
     def __init__(
@@ -176,23 +178,22 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             device: Optional torch device (e.g. ``"cuda"``) for batched ridge solves.
         """
         self._regressor_default = regressor is None
-        self.regressor = regressor or FastRidge()
+        # Regressors and classifiers are sklearn-compatible duck types; the
+        # mixin base classes do not declare fit/predict, hence Any.
+        self.regressor: Any = regressor or FastRidge()
         self.verbose = int(verbose)
         self.min_samples_train = self._resolve_min_samples_train(min_samples_train)
         self.fallback = self._validate_fallback(fallback)
         self.rng = rng
         self._rng = np.random.RandomState(rng)
         self._classifier_default = classifier is None
-        self.classifier = classifier or DecisionTreeClassifier(max_depth=4, random_state=rng)
-        if scoring == "default":
-            self.scoring = scoring
-        elif callable(scoring):
-            self.scoring = scoring
-        else:
-            raise ValueError("`scoring` must be 'default' or a callable.")
+        self.classifier: Any = classifier or DecisionTreeClassifier(max_depth=4, random_state=rng)
+        if scoring != "default" and not callable(scoring):
+            raise DataFillerValueError("`scoring` must be 'default' or a callable.")
+        self.scoring: str | Callable[..., np.ndarray] = scoring
         self.device = device
-        self._gpu_backend = None
-        self.imputation_features_ = None
+        self._gpu_backend: GramBackend | None = None
+        self.imputation_features_: dict | None = None
 
     def fit(self, X, y: None = None) -> "MultivariateImputer":
         """No-op fit for sklearn compatibility."""
@@ -262,6 +263,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             # The scores are for all n_features, but we are sampling from n_features - 1
             # The scores array is (n_cols_to_impute, n_features)
             # The scores for the column to impute against itself should be 0 or NaN.
+            assert scores is not None
             p = scores[scores_index][cols_to_sample_from]
             p = p / p.sum()
             p[np.isnan(p)] = 0
@@ -510,7 +512,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         col_ptr, col_rows = nan_cols_csc(local_iy, local_ix, k_local)
         hits = np.zeros(m_local, dtype=np.uint32)
         stamp = np.full(m_local, -1, dtype=np.int64)
-        epoch = 0
+        epoch = np.int64(0)
 
         # The Gram of `[X, y, 1]` is accumulated once over the globally
         # complete rows; each pattern then only adds a small correction.
@@ -523,7 +525,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             z0 = z_aug if len(complete0) == m_local else z_aug[complete0]
             gram0 = z0.T @ z0
 
-        training_groups = {}
+        training_groups: dict[tuple, dict[str, Any]] = {}
         for pattern, prediction_group in zip(patterns, prediction_groups, strict=False):
             usable_cols_local = local_cols[pattern].astype(np.uint32, copy=False)
             if not len(usable_cols_local):
@@ -637,6 +639,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         on ``self.device``; patterns with fewer than `min_samples_train`
         complete rows fall back to the CPU optimask branch below.
         """
+        assert self._gpu_backend is not None
         result = self._gpu_backend.impute_column(
             x=x,
             col=col_to_impute,
@@ -652,6 +655,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             x_imputed[imputable_rows[rows_solved], col_to_impute] = result.predictions[rows_solved]
         if result.all_valid:
             return
+        assert result.patterns is not None and result.indexes is not None and result.pattern_valid is not None
 
         sampled_cols_uint32 = sampled_cols.astype(np.uint32, copy=False)
         local_train = _subset(X=x, rows=trainable_rows, columns=sampled_cols_uint32)
@@ -755,7 +759,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             (NumPy array, pandas DataFrame, or Polars DataFrame).
         """
         if is_polars_lazyframe(x):
-            raise TypeError("Polars LazyFrame input is not supported; call collect() before imputation.")
+            raise DataFillerTypeError("Polars LazyFrame input is not supported; call collect() before imputation.")
 
         is_pandas_df = isinstance(x, pd.DataFrame)
         is_polars_df = is_polars_dataframe(x)
@@ -817,8 +821,11 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         if normalize:
             if is_df:
                 if is_polars_df:
+                    assert polars_metadata is not None
                     normalize_cols = polars_metadata["numeric_main_indices"]
                 else:
+                    assert original_columns is not None and original_dtypes is not None
+                    assert main_column_indices is not None
                     numeric_cols = []
                     for i, col in enumerate(original_columns):
                         dtype = original_dtypes[col]
@@ -839,7 +846,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                     x[:, normalize_cols] = (x[:, normalize_cols] - norm_means) / norm_scales
 
         if n_nearest_features is not None:
-            if self.scoring == "default":
+            if isinstance(self.scoring, str):
                 scores = scoring(x, cols_to_impute, mask_nan)
             else:
                 scores = self.scoring(x, cols_to_impute)
@@ -898,6 +905,8 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             }
 
         if is_pandas_df:
+            assert isinstance(original_index, pd.Index) and isinstance(original_columns, pd.Index)
+            assert main_column_indices is not None and original_dtypes is not None
             return self._decode_dataframe(
                 x_imputed=x_imputed,
                 original_index=original_index,
@@ -907,6 +916,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 original_dtypes=original_dtypes,
             )
         if is_polars_df:
+            assert polars_metadata is not None
             return decode_polars_dataframe(x_imputed, polars_metadata)
 
         return x_imputed

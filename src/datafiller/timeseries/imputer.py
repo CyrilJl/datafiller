@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin
 
+from ..exceptions import DataFillerTypeError, DataFillerValueError
 from ..multivariate._polars import is_polars_dataframe, is_polars_lazyframe
 from ..multivariate.imputer import MultivariateImputer
 from ._utils import interpolate_small_gaps
@@ -93,17 +94,17 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         rng: int | None = None,
         verbose: int = 0,
         scoring: str | Callable = "default",
-        interpolate_gaps_less_than: int = None,
+        interpolate_gaps_less_than: int | None = None,
         add_time_features: bool = True,
         device: str | None = None,
         time_column: str | None = None,
     ):
         if not isinstance(lags, Iterable) or not all(isinstance(i, int) for i in lags):
-            raise ValueError("lags must be an iterable of integers.")
+            raise DataFillerValueError("lags must be an iterable of integers.")
         if 0 in lags:
-            raise ValueError("lags cannot contain 0.")
+            raise DataFillerValueError("lags cannot contain 0.")
         if time_column is not None and not isinstance(time_column, str):
-            raise ValueError("time_column must be a string or None.")
+            raise DataFillerValueError("time_column must be a string or None.")
         self.lags = lags
         self.regressor = regressor
         self.classifier = classifier
@@ -142,7 +143,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
     def set_params(self, **params) -> "TimeSeriesImputer":
         """Set parameters and refresh dependent objects."""
         if "time_column" in params and params["time_column"] is not None and not isinstance(params["time_column"], str):
-            raise ValueError("time_column must be a string or None.")
+            raise DataFillerValueError("time_column must be a string or None.")
         rebuild_keys = {
             "regressor",
             "classifier",
@@ -169,30 +170,31 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             return index.freq
 
         if len(index) < 2:
-            raise ValueError("DataFrame index must have a frequency or at least two timestamps to infer one.")
+            raise DataFillerValueError("DataFrame index must have a frequency or at least two timestamps to infer one.")
         if len(index) >= 3:
             inferred = pd.infer_freq(index)
             if inferred is not None:
                 return inferred
         if not index.is_monotonic_increasing:
-            raise ValueError("DataFrame index must be sorted in increasing order.")
+            raise DataFillerValueError("DataFrame index must be sorted in increasing order.")
         if index.has_duplicates:
-            raise ValueError("DataFrame index must not contain duplicate timestamps.")
+            raise DataFillerValueError("DataFrame index must not contain duplicate timestamps.")
 
         timestamps_ns = index.to_numpy(dtype="datetime64[ns]").astype(np.int64)
         deltas = np.diff(timestamps_ns)
         positive_deltas = deltas[deltas > 0]
         if not positive_deltas.size:
-            raise ValueError("DataFrame index frequency could not be inferred.")
+            raise DataFillerValueError("DataFrame index frequency could not be inferred.")
 
         base_delta = positive_deltas.min()
         if np.any(positive_deltas % base_delta != 0):
-            raise ValueError("DataFrame index frequency could not be inferred from irregular timestamp gaps.")
+            raise DataFillerValueError("DataFrame index frequency could not be inferred from irregular timestamp gaps.")
         return pd.Timedelta(base_delta, unit="ns")
 
     @classmethod
     def _regularize_index(cls, df: pd.DataFrame) -> pd.DataFrame:
         """Reindex a time series to its complete regular timestamp grid."""
+        assert isinstance(df.index, pd.DatetimeIndex)
         freq = cls._infer_frequency(df.index)
         full_index = pd.date_range(start=df.index[0], end=df.index[-1], freq=freq, name=df.index.name)
         if len(full_index) == len(df.index) and full_index.equals(df.index):
@@ -208,9 +210,9 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         else:
             trend = np.zeros(len(index), dtype=np.float32)
 
-        hour = index.hour.to_numpy(dtype=np.float32) + index.minute.to_numpy(dtype=np.float32) / 60.0
+        hour = index.hour.to_numpy(dtype=np.float32) + index.minute.to_numpy(dtype=np.float32) / 60.0  # ty: ignore[unresolved-attribute]
         day_angle = np.float32(2.0 * np.pi) * hour / np.float32(24.0)
-        week_angle = np.float32(2.0 * np.pi) * index.dayofweek.to_numpy(dtype=np.float32) / np.float32(7.0)
+        week_angle = np.float32(2.0 * np.pi) * index.dayofweek.to_numpy(dtype=np.float32) / np.float32(7.0)  # ty: ignore[unresolved-attribute]
 
         base_features = {
             "__time_trend": trend.astype(np.float32, copy=False),
@@ -237,25 +239,29 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         import polars as pl
 
         if self.time_column is None:
-            raise ValueError("time_column must be set when TimeSeriesImputer receives a Polars DataFrame.")
+            raise DataFillerValueError("time_column must be set when TimeSeriesImputer receives a Polars DataFrame.")
         if self.time_column not in df.columns:
-            raise ValueError(f"time_column {self.time_column!r} was not found in the Polars DataFrame.")
+            raise DataFillerValueError(f"time_column {self.time_column!r} was not found in the Polars DataFrame.")
 
         time_series = df.get_column(self.time_column)
         if time_series.dtype.base_type() not in {pl.Date, pl.Datetime}:
-            raise TypeError(
+            raise DataFillerTypeError(
                 f"Polars time_column must have Date or Datetime dtype, got {time_series.dtype} for "
                 f"{self.time_column!r}."
             )
         if time_series.null_count():
-            raise ValueError("Polars time_column cannot contain null values.")
+            raise DataFillerValueError("Polars time_column cannot contain null values.")
 
         data_columns = [column for column in df.columns if column != self.time_column]
         if not data_columns:
-            raise ValueError("A Polars time series must contain at least one data column besides time_column.")
+            raise DataFillerValueError(
+                "A Polars time series must contain at least one data column besides time_column."
+            )
         unsupported = [column for column in data_columns if not df.schema[column].is_numeric()]
         if unsupported:
-            raise ValueError(f"TimeSeriesImputer requires numeric data columns; unsupported columns: {unsupported}")
+            raise DataFillerValueError(
+                f"TimeSeriesImputer requires numeric data columns; unsupported columns: {unsupported}"
+            )
 
         index = pd.DatetimeIndex(time_series.to_list(), name=self.time_column)
         data = {column: df.get_column(column).to_numpy() for column in data_columns}
@@ -318,7 +324,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         positions = index.get_indexer(timestamps)
         if np.any(positions == -1):
             missing = [value for value, position in zip(values, positions, strict=True) if position == -1]
-            raise ValueError(f"Timestamps not found in the regularized time grid: {missing}")
+            raise DataFillerValueError(f"Timestamps not found in the regularized time grid: {missing}")
         return positions
 
     def __call__(
@@ -366,7 +372,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
                 gaps), or if the columns are not numeric.
         """
         if is_polars_lazyframe(df):
-            raise TypeError("Polars LazyFrame input is not supported; call collect() before imputation.")
+            raise DataFillerTypeError("Polars LazyFrame input is not supported; call collect() before imputation.")
         is_polars_df = is_polars_dataframe(df)
         polars_metadata = None
         if is_polars_df:
@@ -374,11 +380,12 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             df, polars_metadata = self._polars_to_pandas(df)
         else:
             if not isinstance(df, pd.DataFrame):
-                raise TypeError("Input must be a pandas or eager Polars DataFrame.")
+                raise DataFillerTypeError("Input must be a pandas or eager Polars DataFrame.")
             if not isinstance(df.index, pd.DatetimeIndex):
-                raise TypeError("DataFrame index must be a DatetimeIndex.")
+                raise DataFillerTypeError("DataFrame index must be a DatetimeIndex.")
 
         df = self._regularize_index(df)
+        assert isinstance(df.index, pd.DatetimeIndex)
 
         if is_polars_df:
             rows_to_impute = self._polars_rows_to_indices(polars_rows_to_impute, df.index)
@@ -389,9 +396,9 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
                     else list(cols_to_impute)
                 )
                 if not all(isinstance(column, str) for column in requested_columns):
-                    raise ValueError("cols_to_impute must contain column names for a Polars DataFrame.")
+                    raise DataFillerValueError("cols_to_impute must contain column names for a Polars DataFrame.")
                 if self.time_column in requested_columns:
-                    raise ValueError("The Polars time_column cannot be imputed.")
+                    raise DataFillerValueError("The Polars time_column cannot be imputed.")
 
         if self.interpolate_gaps_less_than is not None:
             df = df.copy()
@@ -406,7 +413,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             try:
                 values = values.astype(np.float64)
             except (TypeError, ValueError) as exc:
-                raise ValueError("TimeSeriesImputer requires numeric columns.") from exc
+                raise DataFillerValueError("TimeSeriesImputer requires numeric columns.") from exc
 
         # Create autoregressive (and optional calendar) features directly in a
         # preallocated matrix instead of concatenating shifted DataFrames.
@@ -415,6 +422,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         for lag in lags:
             feature_names.extend(f"{col}_lag_{lag}" for col in original_cols)
         if self.add_time_features:
+            assert isinstance(df.index, pd.DatetimeIndex)
             time_features = self._make_time_features(df.index, reserved_names=feature_names)
             feature_names.extend(time_features.columns)
         else:
@@ -457,7 +465,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
                 elif isinstance(c, str):
                     indices.append(original_cols.get_loc(c))
                 else:
-                    raise ValueError("cols_to_impute must be an int, str, or an iterable of ints or strs.")
+                    raise DataFillerValueError("cols_to_impute must be an int, str, or an iterable of ints or strs.")
             cols_to_impute_indices = np.array(indices)
 
         # Process rows_to_impute
@@ -496,7 +504,13 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             positions = feature_index.get_indexer(original_cols)
             if (positions >= 0).all():
                 result = pd.DataFrame(imputed_data[:, positions], index=df.index, columns=original_cols)
-                return self._pandas_to_polars(result, polars_metadata) if is_polars_df else result
+                if is_polars_df:
+                    assert polars_metadata is not None
+                    return self._pandas_to_polars(result, polars_metadata)
+                return result
         imputed_df = pd.DataFrame(imputed_data, index=df.index, columns=feature_index)
         result = imputed_df[original_cols]
-        return self._pandas_to_polars(result, polars_metadata) if is_polars_df else result
+        if is_polars_df:
+            assert polars_metadata is not None
+            return self._pandas_to_polars(result, polars_metadata)
+        return result

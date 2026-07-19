@@ -4,8 +4,10 @@ from collections.abc import Iterable
 
 import numpy as np
 
+from ..exceptions import DataFillerValueError
 
-def _process_to_impute(size: int, to_impute: None | int | Iterable[int]) -> np.ndarray:
+
+def _process_to_impute(size: int, to_impute: None | int | Iterable) -> np.ndarray:
     """Processes the `to_impute` argument into a numpy array of indices.
 
     Args:
@@ -36,7 +38,7 @@ def _dataframe_rows_to_impute_to_indices(rows_to_impute, index):
 
     if np.any((indexer := index.get_indexer(to_impute_list)) == -1):
         missing = [label for label, i in zip(to_impute_list, indexer, strict=True) if i == -1]
-        raise ValueError(f"Row labels not found in index: {missing}")
+        raise DataFillerValueError(f"Row labels not found in index: {missing}")
     return indexer
 
 
@@ -53,16 +55,16 @@ def _dataframe_cols_to_impute_to_indices(cols_to_impute, columns):
 
     if np.any((indexer := columns.get_indexer(to_impute_list)) == -1):
         missing = [label for label, i in zip(to_impute_list, indexer, strict=True) if i == -1]
-        raise ValueError(f"Column labels not found in columns: {missing}")
+        raise DataFillerValueError(f"Column labels not found in columns: {missing}")
     return indexer
 
 
 def _validate_input(
     x: np.ndarray,
-    rows_to_impute: None | int | Iterable[int],
-    cols_to_impute: None | int | Iterable[int],
+    rows_to_impute: None | int | Iterable,
+    cols_to_impute: None | int | Iterable,
     n_nearest_features: None | float | int,
-) -> int:
+) -> int | None:
     """Validates the inputs to the `__call__` method.
 
     Args:
@@ -78,13 +80,13 @@ def _validate_input(
         ValueError: If any of the inputs are invalid.
     """
     if not isinstance(x, np.ndarray):
-        raise ValueError("x must be a numpy array.")
+        raise DataFillerValueError("x must be a numpy array.")
     if x.ndim != 2:
-        raise ValueError(f"x must be a 2D array, but got {x.ndim} dimensions.")
+        raise DataFillerValueError(f"x must be a 2D array, but got {x.ndim} dimensions.")
     if not np.issubdtype(x.dtype, np.number):
-        raise ValueError(f"x must have a numeric dtype, but got {x.dtype}.")
+        raise DataFillerValueError(f"x must have a numeric dtype, but got {x.dtype}.")
     if np.isinf(x).any():
-        raise ValueError("x cannot contain infinity.")
+        raise DataFillerValueError("x cannot contain infinity.")
 
     m, n = x.shape
 
@@ -93,11 +95,13 @@ def _validate_input(
             rows_to_impute = [rows_to_impute]
         if isinstance(rows_to_impute, np.ndarray):
             if not np.issubdtype(rows_to_impute.dtype, np.integer):
-                raise ValueError(f"rows_to_impute must have an integer dtype, but got {rows_to_impute.dtype}.")
-            if not (np.all(rows_to_impute >= 0) and np.all(rows_to_impute < m)):
-                raise ValueError(f"rows_to_impute must be a list of integers between 0 and {m - 1}.")
+                raise DataFillerValueError(
+                    f"rows_to_impute must have an integer dtype, but got {rows_to_impute.dtype}."
+                )
+            if not (np.all(rows_to_impute >= 0) and np.all(rows_to_impute < m)):  # ty: ignore[unsupported-operator]
+                raise DataFillerValueError(f"rows_to_impute must be a list of integers between 0 and {m - 1}.")
         elif not all(isinstance(i, int) for i in rows_to_impute) or not all(0 <= i < m for i in rows_to_impute):
-            raise ValueError(f"rows_to_impute must be a list of integers between 0 and {m - 1}.")
+            raise DataFillerValueError(f"rows_to_impute must be a list of integers between 0 and {m - 1}.")
 
     if cols_to_impute is not None:
         if isinstance(cols_to_impute, int):
@@ -105,18 +109,18 @@ def _validate_input(
         if not all(isinstance(i, (int, np.integer)) for i in cols_to_impute) or not all(
             0 <= i < n for i in cols_to_impute
         ):
-            raise ValueError(f"cols_to_impute must be a list of integers between 0 and {n - 1}.")
+            raise DataFillerValueError(f"cols_to_impute must be a list of integers between 0 and {n - 1}.")
 
     if n_nearest_features is not None:
         if isinstance(n_nearest_features, float):
             if not (0 < n_nearest_features <= 1.0):
-                raise ValueError("If n_nearest_features is a float, it must be in (0, 1].")
+                raise DataFillerValueError("If n_nearest_features is a float, it must be in (0, 1].")
             n_nearest_features = int(n_nearest_features * n)
             if n_nearest_features == 0:
-                raise ValueError("n_nearest_features resulted in 0 features to select.")
+                raise DataFillerValueError("n_nearest_features resulted in 0 features to select.")
         if not isinstance(n_nearest_features, int):
-            raise ValueError("n_nearest_features must be an int or float.")
+            raise DataFillerValueError("n_nearest_features must be an int or float.")
         if not (0 < n_nearest_features <= n):
-            raise ValueError(f"n_nearest_features must be between 1 and {n}.")
+            raise DataFillerValueError(f"n_nearest_features must be between 1 and {n}.")
 
     return n_nearest_features

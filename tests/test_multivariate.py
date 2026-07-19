@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.linear_model import Ridge
+from sklearn.tree import DecisionTreeClassifier
 
 import datafiller.multivariate.imputer as multivariate_imputer_module
 from datafiller.datasets import load_titanic
@@ -179,6 +181,34 @@ def test_multivariate_imputer_set_params_resolves_default_min_samples_train():
     imputer = MultivariateImputer(min_samples_train=1)
     imputer.set_params(min_samples_train=None)
     assert imputer.min_samples_train == 20
+
+
+def test_multivariate_imputer_set_params_resets_default_regressor_and_classifier():
+    imputer = MultivariateImputer()
+
+    custom_regressor = Ridge()
+    imputer.set_params(regressor=custom_regressor)
+    assert imputer.regressor is custom_regressor
+    imputer.set_params(regressor=None)
+    assert isinstance(imputer.regressor, FastRidge)
+
+    custom_classifier = DecisionTreeClassifier(max_depth=2)
+    imputer.set_params(classifier=custom_classifier)
+    assert imputer.classifier is custom_classifier
+    imputer.set_params(classifier=None)
+    assert isinstance(imputer.classifier, DecisionTreeClassifier)
+    assert imputer.classifier.max_depth == 4
+
+
+def test_multivariate_imputer_set_params_rng_refreshes_default_classifier():
+    imputer = MultivariateImputer()
+    imputer.set_params(rng=7)
+    assert imputer.classifier.random_state == 7
+
+    custom_classifier = DecisionTreeClassifier(max_depth=2, random_state=0)
+    imputer.set_params(classifier=custom_classifier, rng=3)
+    assert imputer.classifier is custom_classifier
+    assert imputer.classifier.random_state == 0
 
 
 def test_multivariate_imputer_fallback_fills_with_column_mean(nan_array):

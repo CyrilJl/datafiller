@@ -8,7 +8,9 @@ imputation model.
 
 import numpy as np
 from numba import bool_, njit, uint32
-from numba.types import UniTuple
+from numba.types import UniTuple  # ty: ignore[unresolved-import]
+
+from .exceptions import DataFillerValueError
 
 
 @njit(bool_(uint32[:]), boundscheck=False, cache=True)
@@ -120,7 +122,7 @@ def _process_index(index: np.ndarray, num: int) -> tuple[np.ndarray, int]:
             table_inv[cnt - 1] = elem
         index[k] = table[elem] - 1
 
-    return table_inv[:cnt], cnt
+    return table_inv[:cnt], int(cnt)
 
 
 def _get_largest_rectangle(heights: np.ndarray, m: int, n: int, min_rows: int = 1) -> tuple[int, int, int]:
@@ -149,10 +151,10 @@ def _get_largest_rectangle(heights: np.ndarray, m: int, n: int, min_rows: int = 
     if min_rows > 1:
         masked = np.where(rows_kept >= min_rows, areas, 0)
         if masked.max() > 0:
-            i0 = np.argmax(masked)
-            return i0, heights[i0], areas[i0]
-    i0 = np.argmax(areas)
-    return i0, heights[i0], areas[i0]
+            i0 = int(np.argmax(masked))
+            return i0, int(heights[i0]), int(areas[i0])
+    i0 = int(np.argmax(areas))
+    return i0, int(heights[i0]), int(areas[i0])
 
 
 def optimask(
@@ -225,7 +227,7 @@ def optimask(
             is_pareto_ordered = is_decreasing(hy)
 
     if not is_pareto_ordered:
-        raise ValueError(f"Pareto optimization did not converge after {step} steps.")
+        raise DataFillerValueError(f"Pareto optimization did not converge after {step} steps.")
 
     # Find the largest rectangle in the pareto-optimal ordering
     i0, j0, area = _get_largest_rectangle(hx, len(rows), len(cols), min_rows=min_rows)

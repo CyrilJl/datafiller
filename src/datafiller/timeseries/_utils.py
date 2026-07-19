@@ -1,5 +1,7 @@
 import pandas as pd
 
+from ..exceptions import DataFillerTypeError
+
 
 def interpolate_small_gaps(series: pd.Series, n: int) -> pd.Series:
     """Interpolate missing values (NaN) in a Pandas Series,
@@ -13,7 +15,7 @@ def interpolate_small_gaps(series: pd.Series, n: int) -> pd.Series:
         pd.Series: The Series with small gaps interpolated.
     """
     if not isinstance(n, int):
-        raise TypeError("n must be an int")
+        raise DataFillerTypeError("n must be an int")
     is_nan = series.isna()
     gaps = (is_nan != is_nan.shift()).cumsum()
     mask = series.groupby(gaps).transform("size") <= n

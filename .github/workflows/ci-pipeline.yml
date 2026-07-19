@@ -1,6 +1,8 @@
 name: CI Pipeline
 
 on:
+  push:
+    branches: [ main ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -73,6 +75,55 @@ jobs:
       - name: Test with pytest
         run: |
           pytest -vv -s
+
+  typecheck:
+    # ty is pre-1.0: pinned so a ty release cannot break CI without a code
+    # change. Package dependencies are installed so imports resolve; torch
+    # (CPU) and polars cover the optional-dependency modules.
+    name: Type check (ty)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e ".[polars]" ty==0.0.61
+
+      - name: Type check
+        run: ty check --python "$(which python)" src/datafiller
+
+  coverage:
+    # Runs the suite with numba JIT disabled so coverage.py can trace the
+    # @njit kernels, with CPU-only torch so the non-CUDA GPU-backend tests
+    # run. test_timing.py is skipped: its large workloads are impractically
+    # slow without JIT compilation.
+    name: Coverage (numba JIT disabled)
+    runs-on: ubuntu-latest
+    env:
+      NUMBA_DISABLE_JIT: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e ".[test,polars]"
+
+      - name: Test with coverage
+        run: pytest -q --ignore=tests/test_timing.py --cov=datafiller --cov-report=term-missing --cov-fail-under=85
 
   polars:
     strategy:
