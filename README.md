@@ -125,6 +125,14 @@ Everything else is unchanged: with the default `device=None`, PyTorch is never i
 
 ## How It Works
 
-DataFiller uses a model-based imputation strategy. For each column containing missing values, it trains a model using the other columns as features. Categorical, boolean, and string columns are one-hot encoded for feature construction, so they can drive the imputation of numerical targets, and are imputed with a classifier before being mapped back to the original labels. Rows to impute are grouped by their pattern of observed features and get one model per pattern, trained on the rows that are complete for that pattern's features; with the default ridge regressor these models are solved efficiently from a shared Gram matrix. When too few complete rows exist, the [optimask](https://github.com/CyrilJl/OptiMask) algorithm finds the largest complete rectangular subset of the data to train on instead. This ensures that the training data is of the highest possible quality, leading to more accurate imputations.
+DataFiller uses a model-based imputation strategy. For each column containing missing values, it trains a model using the other columns as features. Categorical, boolean, and string columns are one-hot encoded for feature construction, so they can drive the imputation of numerical targets, and are imputed with a classifier before being mapped back to the original labels. Rows to impute are grouped by their pattern of observed features and get one model per pattern; with the default ridge regressor these models are solved efficiently from a shared Gram matrix.
+
+For each pattern, the training data is selected along a three-step path:
+
+1. **Complete rows** — the rows fully observed on the pattern's features are used directly when at least `min_samples_train` of them exist (default 20, calibrated on real and synthetic datasets).
+2. **optimask** — otherwise, the [optimask](https://github.com/CyrilJl/OptiMask) algorithm finds the largest complete rectangular subset of the data, trading some feature columns for more training rows, and prefers rectangles that keep at least `min_samples_train` rows.
+3. **Fallback** — the rare cells that still cannot get a model are filled with the column mean (most frequent category for categoricals) by default; pass `fallback=None` to leave them as NaN instead.
+
+This ensures each model is trained on the highest-quality data available while still guaranteeing a fully imputed output.
 
 For more details, see the [documentation](https://datafiller.readthedocs.io/).

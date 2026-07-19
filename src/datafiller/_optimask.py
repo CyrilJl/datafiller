@@ -123,7 +123,7 @@ def _process_index(index: np.ndarray, num: int) -> tuple[np.ndarray, int]:
     return table_inv[:cnt], cnt
 
 
-def _get_largest_rectangle(heights: np.ndarray, m: int, n: int) -> tuple[int, int, int]:
+def _get_largest_rectangle(heights: np.ndarray, m: int, n: int, min_rows: int = 1) -> tuple[int, int, int]:
     """Finds the largest rectangle under a histogram.
 
     This is used to find the largest area of non-missing values.
@@ -132,6 +132,11 @@ def _get_largest_rectangle(heights: np.ndarray, m: int, n: int) -> tuple[int, in
         heights: The histogram of heights.
         m: The total number of rows.
         n: The total number of columns.
+        min_rows: Prefer rectangles keeping at least this many rows: the
+            area is maximized over the candidates that satisfy the
+            constraint, and only falls back to the unconstrained maximum
+            when no candidate does. With the default of 1 the choice is
+            identical to the unconstrained maximum.
 
     Returns:
         A tuple containing the top-left corner and the area of the
@@ -139,7 +144,13 @@ def _get_largest_rectangle(heights: np.ndarray, m: int, n: int) -> tuple[int, in
     """
     if n > len(heights):
         heights = np.concatenate((heights, np.array([0])))
-    areas = (m - heights) * (n - np.arange(len(heights)))
+    rows_kept = m - heights
+    areas = rows_kept * (n - np.arange(len(heights)))
+    if min_rows > 1:
+        masked = np.where(rows_kept >= min_rows, areas, 0)
+        if masked.max() > 0:
+            i0 = np.argmax(masked)
+            return i0, heights[i0], areas[i0]
     i0 = np.argmax(areas)
     return i0, heights[i0], areas[i0]
 
@@ -151,6 +162,7 @@ def optimask(
     cols: np.ndarray,
     global_matrix_size: tuple[int, int],
     copy: bool = True,
+    min_rows: int = 1,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Finds the largest rectangular area of a matrix for training.
 
@@ -167,6 +179,11 @@ def optimask(
         copy: If False, `iy` and `ix` are used as scratch space and
             overwritten, halving peak memory. Only pass False when the
             arrays are not reused afterwards.
+        min_rows: Prefer rectangles keeping at least this many rows over
+            strictly larger ones that keep fewer; falls back to the
+            unconstrained maximum-area rectangle when the constraint is
+            infeasible. Callers that need `min_rows` training samples get a
+            usable rectangle whenever one exists on the pareto front.
 
     Returns:
         A tuple containing the rows and columns to keep for training.
@@ -211,7 +228,7 @@ def optimask(
         raise ValueError(f"Pareto optimization did not converge after {step} steps.")
 
     # Find the largest rectangle in the pareto-optimal ordering
-    i0, j0, area = _get_largest_rectangle(hx, len(rows), len(cols))
+    i0, j0, area = _get_largest_rectangle(hx, len(rows), len(cols), min_rows=min_rows)
 
     if area == 0:
         return np.array([], dtype=np.uint32), np.array([], dtype=np.uint32)
