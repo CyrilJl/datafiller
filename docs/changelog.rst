@@ -1,6 +1,12 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+- ``TimeSeriesImputer`` now accepts categorical, string, object, and boolean columns in pandas input: categorical targets are imputed with the configured classifier, and their lagged/lead copies participate as features alongside numeric ones. Polars time series input remains numeric-only.
+- The benchmark suite (``scripts/multivariate_benchmark.py`` and the docs benchmarks page) now covers open datasets commonly used to assess imputation algorithms: tabular UCI/sklearn datasets (Spambase, Letter Recognition, Wine Quality red, Abalone, Ionosphere, California Housing) imputed with ``MultivariateImputer``, and time series benchmarks (PEMS-BAY, METR-LA, Beijing PM2.5, ETTh1) imputed with ``TimeSeriesImputer``.
+
 v0.3.2 (2026-07-19)
 -------------------
 

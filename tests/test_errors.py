@@ -193,9 +193,10 @@ def test_timeseries_imputer_invalid_cols_to_impute_type_raises():
         TimeSeriesImputer()(_ts_frame(), cols_to_impute=[1.5])
 
 
-def test_timeseries_imputer_rejects_non_numeric_columns():
+def test_timeseries_imputer_rejects_unsupported_dtype_columns():
+    # Categorical/string/bool columns are supported; datetime data columns are not.
     df = _ts_frame()
-    df["label"] = list("ab" * 15)
+    df["when"] = df.index
     with pytest.raises(ValueError, match="requires numeric columns"):
         TimeSeriesImputer()(df)
 
