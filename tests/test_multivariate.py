@@ -165,10 +165,52 @@ def test_multivariate_imputer_reproducible_mixed_types(titanic_mixed_df):
 
 
 def test_multivariate_imputer_min_samples_train(nan_array):
+    imputer = MultivariateImputer(min_samples_train=nan_array.shape[0] + 1, fallback=None)
+    imputed_array = imputer(nan_array)
+    # With an unreachable min_samples_train and no fallback, no imputation happens
+    assert np.isnan(imputed_array).sum() == np.isnan(nan_array).sum()
+
+
+def test_multivariate_imputer_default_min_samples_train_is_calibrated():
+    assert MultivariateImputer().min_samples_train == 20
+
+
+def test_multivariate_imputer_fallback_fills_with_column_mean(nan_array):
+    # Unreachable threshold: every imputed cell must come from the fallback
     imputer = MultivariateImputer(min_samples_train=nan_array.shape[0] + 1)
     imputed_array = imputer(nan_array)
-    # With a high min_samples_train, no imputation should happen
-    assert np.isnan(imputed_array).sum() == np.isnan(nan_array).sum()
+    assert not np.isnan(imputed_array).any()
+    col_means = np.nanmean(nan_array, axis=0)
+    iy, ix = np.nonzero(np.isnan(nan_array))
+    np.testing.assert_allclose(imputed_array[iy, ix], col_means[ix], rtol=1e-5)
+
+
+def test_multivariate_imputer_fallback_respects_rows_and_cols_to_impute(nan_array):
+    imputer = MultivariateImputer(min_samples_train=nan_array.shape[0] + 1)
+    imputed_array = imputer(nan_array, cols_to_impute=[1, 3])
+    assert np.isnan(imputed_array[:, [1, 3]]).sum() == 0
+    assert np.isnan(imputed_array[:, 0]).sum() == np.isnan(nan_array[:, 0]).sum()
+
+
+def test_multivariate_imputer_fallback_mode_for_categoricals():
+    n = 12
+    df = pd.DataFrame(
+        {
+            "cat": pd.Categorical(["a", "a", "a", "b", None, "a", "a", None, "b", "a", "a", "a"]),
+            "value": np.arange(n, dtype=float),
+        }
+    )
+    df.loc[3, "value"] = np.nan
+    imputer = MultivariateImputer(min_samples_train=n + 1, rng=0)
+    imputed_df = imputer(df)
+    assert imputed_df["cat"].isna().sum() == 0
+    # mode of observed categories is "a"
+    assert (imputed_df.loc[[4, 7], "cat"] == "a").all()
+
+
+def test_multivariate_imputer_invalid_fallback_raises():
+    with pytest.raises(ValueError, match="fallback"):
+        MultivariateImputer(fallback="median")
 
 
 def test_multivariate_imputer_boolean_support():

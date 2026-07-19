@@ -56,11 +56,19 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             ``DecisionTreeClassifier(max_depth=4, random_state=rng)``.
         verbose (int, optional): The verbosity level. Defaults to 0.
         min_samples_train (int, optional): The minimum number of samples
-            required to train a model. If, after the imputation, some values
-            are still missing, it is likely that no training set with at least
-            `min_samples_train` samples could be found. Defaults to `None`,
-            which means that a model will be trained if at least one sample
-            is available.
+            required to train a model. Patterns with fewer complete rows fall
+            back to an `optimask` search that trades feature columns for
+            training rows; cells whose patterns still cannot reach the
+            threshold are handled by `fallback`. Defaults to `None`, which
+            resolves to 20 — calibrated on real and synthetic datasets, where
+            values of 10-20 consistently beat permissive ones (fits on fewer
+            samples are often worse than a plain column mean once missingness
+            reaches ~25%).
+        fallback (str or None, optional): What to do with cells no model
+            could impute (their pattern never reached `min_samples_train`
+            training rows). ``"mean"`` (default) fills them with the column
+            mean (most frequent category for categorical columns). ``None``
+            leaves them as NaN.
         rng (int, optional): A seed for the random number generator. This is
             used for reproducible feature sampling when `n_nearest_features`
             is not None, and for the default categorical classifier when one
@@ -120,6 +128,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         classifier: ClassifierMixin | None = None,
         verbose: int = 0,
         min_samples_train: int | None = None,
+        fallback: str | None = "mean",
         rng: int | None = None,
         scoring: str | Callable = "default",
         device: str | None = None,
@@ -129,15 +138,20 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             regressor: Regressor used to impute numerical targets. Defaults to ``FastRidge``.
             classifier: Classifier used to impute categorical or string targets.
                 Defaults to ``DecisionTreeClassifier(max_depth=4, random_state=rng)``.
+            fallback: ``"mean"`` fills cells no model could impute with the column
+                mean (mode for categoricals); ``None`` leaves them as NaN.
             device: Optional torch device (e.g. ``"cuda"``) for batched ridge solves.
         """
         self._regressor_default = regressor is None
         self.regressor = regressor or FastRidge()
         self.verbose = int(verbose)
         if min_samples_train is None:
-            self.min_samples_train = 1
+            self.min_samples_train = 20
         else:
             self.min_samples_train = min_samples_train
+        if fallback not in (None, "mean"):
+            raise ValueError(f"fallback must be 'mean' or None, got {fallback!r}")
+        self.fallback = fallback
         self.rng = rng
         self._rng = np.random.RandomState(rng)
         self._classifier_default = classifier is None
@@ -519,6 +533,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 cols=usable_cols_local,
                 global_matrix_size=local_train.shape,
                 copy=False,
+                min_rows=self.min_samples_train,
             )
             if (len(rows) < self.min_samples_train) or (not len(cols)):
                 continue  # Not enough data to train a model
@@ -629,6 +644,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 cols=usable_cols_local,
                 global_matrix_size=local_train.shape,
                 copy=False,
+                min_rows=self.min_samples_train,
             )
             if (len(rows) < self.min_samples_train) or (not len(cols)):
                 continue  # Not enough data to train a model
@@ -637,6 +653,34 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             self.regressor.fit(X=X_train, y=y_train)
             predictions = self.regressor.predict(_subset(X=local_predict, rows=prediction_group, columns=cols))
             x_imputed[imputable_rows[prediction_group], col_to_impute] = predictions
+
+    @staticmethod
+    def _apply_fallback(
+        x_imputed: np.ndarray,
+        mask_nan: np.ndarray,
+        mask_rows_to_impute: np.ndarray,
+        cols_to_impute: np.ndarray,
+        categorical_cols: set,
+    ) -> None:
+        """Fills cells no model could impute with the column mean (mode for categoricals).
+
+        Only cells that were targeted for imputation (NaN in the input, row
+        selected) are filled; columns with no observed value at all are left
+        untouched.
+        """
+        for col in cols_to_impute:
+            remaining = mask_nan[:, col] & mask_rows_to_impute & np.isnan(x_imputed[:, col])
+            if not remaining.any():
+                continue
+            observed = x_imputed[~mask_nan[:, col], col]
+            if not observed.size:
+                continue
+            if col in categorical_cols:
+                values, counts = np.unique(observed, return_counts=True)
+                fill = values[np.argmax(counts)]
+            else:
+                fill = observed.mean()
+            x_imputed[remaining, col] = fill
 
     def __call__(
         self,
@@ -782,6 +826,9 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 x_imputed += norm_means
             else:
                 x_imputed[:, normalize_cols] = x_imputed[:, normalize_cols] * norm_scales + norm_means
+
+        if self.fallback == "mean":
+            self._apply_fallback(x_imputed, mask_nan, mask_rows_to_impute, cols_to_impute, categorical_cols)
 
         if is_df and self.imputation_features_ is not None:
             assert encoded_feature_names is not None

@@ -27,8 +27,11 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             classifier used for categorical or string targets. Defaults to
             ``DecisionTreeClassifier(max_depth=4)``.
         min_samples_train (int, optional): The minimum number of samples
-            required to train a model. Defaults to `None`, which means that a
-            model will be trained if at least one sample is available.
+            required to train a model. Defaults to `None`, which resolves to
+            20 (see :class:`~datafiller.multivariate.imputer.MultivariateImputer`).
+        fallback (str or None, optional): What to do with cells no model could
+            impute. ``"mean"`` (default) fills them with the column mean (mode
+            for categoricals); ``None`` leaves them as NaN.
         rng (int, optional): A seed for the random number generator. This is
             used for reproducible feature sampling when `n_nearest_features`
             is not None. Defaults to None.
@@ -82,6 +85,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         regressor: RegressorMixin | None = None,
         classifier: ClassifierMixin | None = None,
         min_samples_train: int | None = None,
+        fallback: str | None = "mean",
         rng: int | None = None,
         verbose: int = 0,
         scoring: str | Callable = "default",
@@ -97,6 +101,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         self.regressor = regressor
         self.classifier = classifier
         self.min_samples_train = min_samples_train
+        self.fallback = fallback
         self.rng = rng
         self.verbose = verbose
         self.scoring = scoring
@@ -107,12 +112,12 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         self.imputation_features_ = None
 
     def _build_multivariate_imputer(self) -> None:
-        min_samples_train = 1 if self.min_samples_train is None else self.min_samples_train
         self.multivariate_imputer = MultivariateImputer(
             regressor=self.regressor,
             classifier=self.classifier,
             verbose=self.verbose,
-            min_samples_train=min_samples_train,
+            min_samples_train=self.min_samples_train,
+            fallback=self.fallback,
             rng=self.rng,
             scoring=self.scoring,
             device=self.device,
