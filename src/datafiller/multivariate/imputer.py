@@ -79,7 +79,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             reaches ~25%).
         fallback (str or None, optional): What to do with cells no model
             could impute (their pattern never reached `min_samples_train`
-            training rows). ``"mean"`` (default) fills them with the column
+            training rows). ``"simple"`` (default) fills them with the column
             mean (most frequent category for categorical columns). ``None``
             leaves them as NaN.
         rng (int, optional): A seed for the random number generator. This is
@@ -141,7 +141,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         classifier: ClassifierMixin | None = None,
         verbose: int = 0,
         min_samples_train: int | None = None,
-        fallback: str | None = "mean",
+        fallback: str | None = "simple",
         rng: int | None = None,
         scoring: str | Callable = "default",
         device: str | None = None,
@@ -151,7 +151,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             regressor: Regressor used to impute numerical targets. Defaults to ``FastRidge``.
             classifier: Classifier used to impute categorical or string targets.
                 Defaults to ``DecisionTreeClassifier(max_depth=4, random_state=rng)``.
-            fallback: ``"mean"`` fills cells no model could impute with the column
+            fallback: ``"simple"`` fills cells no model could impute with the column
                 mean (mode for categoricals); ``None`` leaves them as NaN.
             device: Optional torch device (e.g. ``"cuda"``) for batched ridge solves.
         """
@@ -162,8 +162,8 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             self.min_samples_train = 20
         else:
             self.min_samples_train = min_samples_train
-        if fallback not in (None, "mean"):
-            raise ValueError(f"fallback must be 'mean' or None, got {fallback!r}")
+        if fallback not in (None, "simple"):
+            raise ValueError(f"fallback must be 'simple' or None, got {fallback!r}")
         self.fallback = fallback
         self.rng = rng
         self._rng = np.random.RandomState(rng)
@@ -840,7 +840,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             else:
                 x_imputed[:, normalize_cols] = x_imputed[:, normalize_cols] * norm_scales + norm_means
 
-        if self.fallback == "mean":
+        if self.fallback == "simple":
             self._apply_fallback(x_imputed, mask_nan, mask_rows_to_impute, cols_to_impute, categorical_cols)
 
         if is_df and self.imputation_features_ is not None:

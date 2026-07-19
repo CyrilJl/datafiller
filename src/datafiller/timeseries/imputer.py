@@ -30,7 +30,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             required to train a model. Defaults to `None`, which resolves to
             20 (see :class:`~datafiller.multivariate.imputer.MultivariateImputer`).
         fallback (str or None, optional): What to do with cells no model could
-            impute. ``"mean"`` (default) fills them with the column mean (mode
+            impute. ``"simple"`` (default) fills them with the column mean (mode
             for categoricals); ``None`` leaves them as NaN.
         rng (int, optional): A seed for the random number generator. This is
             used for reproducible feature sampling when `n_nearest_features`
@@ -85,7 +85,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         regressor: RegressorMixin | None = None,
         classifier: ClassifierMixin | None = None,
         min_samples_train: int | None = None,
-        fallback: str | None = "mean",
+        fallback: str | None = "simple",
         rng: int | None = None,
         verbose: int = 0,
         scoring: str | Callable = "default",

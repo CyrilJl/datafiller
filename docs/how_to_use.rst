@@ -159,7 +159,7 @@ full descriptions, see the :doc:`api` reference.
 Training-data selection follows a three-step path for each missingness pattern — **complete rows → optimask → fallback**: rows fully
 observed on the pattern's features are used when at least ``min_samples_train`` (default 20) of them exist; otherwise `optimask` finds the
 largest NaN-free rectangle, preferring ones that keep at least ``min_samples_train`` rows; and the rare cells that still cannot get a model
-are filled with the column mean (most frequent category for categoricals) by default — pass ``fallback=None`` to leave them as NaN.
+are filled with the column mean (most frequent category for categoricals) with the default ``fallback="simple"`` — pass ``fallback=None`` to leave them as NaN.
 See :doc:`algorithm` for details.
 
 GPU Acceleration

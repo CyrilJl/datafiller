@@ -99,7 +99,7 @@ def test_timeseries_imputer_invalid_lags():
 
 def test_timeseries_imputer_set_params_propagates_fallback():
     imputer = TimeSeriesImputer()
-    assert imputer.multivariate_imputer.fallback == "mean"
+    assert imputer.multivariate_imputer.fallback == "simple"
     imputer.set_params(fallback=None)
     assert imputer.multivariate_imputer.fallback is None
 
