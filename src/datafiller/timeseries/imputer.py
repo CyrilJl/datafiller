@@ -2,6 +2,7 @@ from collections.abc import Callable, Iterable
 
 import numpy as np
 import pandas as pd
+from pandas.api.types import is_bool_dtype, is_object_dtype, is_string_dtype
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin
 
 from ..exceptions import DataFillerTypeError, DataFillerValueError
@@ -17,6 +18,11 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
     time series data in pandas DataFrames. It automatically creates lagged and
     lead features based on the time series index, then uses these new
     features to impute missing values.
+
+    Pandas input may mix numeric and categorical (categorical, string, object
+    or boolean dtype) columns: categorical targets are imputed with the
+    configured classifier, and their lagged/lead copies are used as features
+    like any other column. Polars input remains numeric-only.
 
     Args:
         lags (Iterable[int], optional): An iterable of integers specifying
@@ -162,6 +168,16 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             self._build_multivariate_imputer()
 
         return self
+
+    @staticmethod
+    def _is_categorical_series(series: pd.Series) -> bool:
+        """Whether a column must be imputed with the classifier (same rule as MultivariateImputer)."""
+        return bool(
+            isinstance(series.dtype, pd.CategoricalDtype)
+            or is_object_dtype(series.dtype)
+            or is_string_dtype(series.dtype)
+            or is_bool_dtype(series.dtype)
+        )
 
     @staticmethod
     def _infer_frequency(index: pd.DatetimeIndex) -> object:
@@ -327,6 +343,90 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             raise DataFillerValueError(f"Timestamps not found in the regularized time grid: {missing}")
         return positions
 
+    def _impute_frame_with_categoricals(
+        self,
+        df: pd.DataFrame,
+        rows_to_impute,
+        cols_to_impute,
+        n_nearest_features,
+        before,
+        after,
+    ) -> pd.DataFrame:
+        """Impute a mixed numeric/categorical frame through the pandas MultivariateImputer path.
+
+        Builds the same feature layout as the numeric fast path (original columns,
+        then lag/lead copies, then calendar features) as a pandas DataFrame so the
+        multivariate imputer's categorical encoding/decoding applies to lagged
+        categorical features as well.
+        """
+        assert isinstance(df.index, pd.DatetimeIndex)
+        original_cols = df.columns
+
+        frames = [df]
+        for lag in self.lags:
+            shifted = df.shift(lag)
+            shifted.columns = pd.Index([f"{col}_lag_{lag}" for col in original_cols])
+            frames.append(shifted)
+        if self.add_time_features:
+            reserved_names = [name for frame in frames for name in frame.columns]
+            frames.append(self._make_time_features(df.index, reserved_names=reserved_names))
+
+        feature_df = pd.concat(frames, axis=1)
+        if not feature_df.columns.is_unique:
+            duplicated = feature_df.columns[feature_df.columns.duplicated()].unique().tolist()
+            raise DataFillerValueError(
+                f"Column names collide with generated lag feature names: {duplicated}. "
+                "Rename the offending columns before imputation."
+            )
+        # Equivalent of dropna(how="all", axis=1) on generated features; original
+        # columns are always kept so the output layout matches the input.
+        keep = feature_df.notna().any(axis=0)
+        keep[original_cols] = True
+        feature_df = feature_df.loc[:, keep]
+
+        if cols_to_impute is None:
+            cols_to_impute_names = list(original_cols)
+        else:
+            if isinstance(cols_to_impute, (int, str)):
+                cols_to_impute = [cols_to_impute]
+            cols_to_impute_names = []
+            for c in cols_to_impute:
+                if isinstance(c, int):
+                    cols_to_impute_names.append(original_cols[c])
+                elif isinstance(c, str):
+                    cols_to_impute_names.append(c)
+                else:
+                    raise DataFillerValueError("cols_to_impute must be an int, str, or an iterable of ints or strs.")
+
+        # The pandas MultivariateImputer path expects row labels, not positions.
+        if rows_to_impute is not None:
+            if isinstance(rows_to_impute, (pd.DatetimeIndex, pd.TimedeltaIndex, pd.PeriodIndex)):
+                row_labels = rows_to_impute
+            elif isinstance(rows_to_impute, int):
+                row_labels = df.index[[rows_to_impute]]
+            else:
+                row_labels = df.index[np.asarray(list(rows_to_impute), dtype=np.int64)]
+        elif before is not None or after is not None:
+            mask = pd.Series(True, index=df.index)
+            if before is not None and (before_timestamp := pd.to_datetime(str(before))):
+                mask &= df.index < before_timestamp
+            if after is not None and (after_timestamp := pd.to_datetime(str(after))):
+                mask &= df.index > after_timestamp
+            row_labels = df.index[mask]
+        else:
+            row_labels = None
+
+        imputed_df = self.multivariate_imputer(
+            feature_df,
+            rows_to_impute=row_labels,
+            cols_to_impute=cols_to_impute_names,
+            n_nearest_features=n_nearest_features,
+        )
+        # The multivariate pandas path already maps features back to column names.
+        self.imputation_features_ = self.multivariate_imputer.imputation_features_
+
+        return imputed_df[original_cols]
+
     def __call__(
         self,
         df,
@@ -369,7 +469,8 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             TypeError: If the input is unsupported or its time axis is invalid.
             ValueError: If no regular frequency can be inferred from the
                 index (e.g. unsorted or duplicated timestamps, or irregular
-                gaps), or if the columns are not numeric.
+                gaps), if a Polars input has non-numeric data columns, or if
+                pandas columns are neither numeric nor categorical-like.
         """
         if is_polars_lazyframe(df):
             raise DataFillerTypeError("Polars LazyFrame input is not supported; call collect() before imputation.")
@@ -403,7 +504,19 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         if self.interpolate_gaps_less_than is not None:
             df = df.copy()
             for col in df.columns:
-                df[col] = interpolate_small_gaps(df[col], self.interpolate_gaps_less_than)
+                if not self._is_categorical_series(df[col]):
+                    df[col] = interpolate_small_gaps(df[col], self.interpolate_gaps_less_than)
+
+        if any(self._is_categorical_series(df[col]) for col in df.columns):
+            # Polars input cannot reach this branch: _polars_to_pandas enforces numeric columns.
+            return self._impute_frame_with_categoricals(
+                df,
+                rows_to_impute=rows_to_impute,
+                cols_to_impute=cols_to_impute,
+                n_nearest_features=n_nearest_features,
+                before=before,
+                after=after,
+            )
 
         original_cols = df.columns
         n_original_cols = len(original_cols)
