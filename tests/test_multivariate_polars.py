@@ -96,3 +96,17 @@ def test_multivariate_imputer_polars_matches_numpy_for_numeric_data():
     actual = MultivariateImputer(min_samples_train=10)(pl.DataFrame(values, schema=["a", "b"]))
 
     np.testing.assert_allclose(actual.to_numpy(), expected)
+
+
+def test_multivariate_imputer_polars_invalid_selectors_raise():
+    df = pl.DataFrame({"a": [1.0, None, 3.0], "b": [4.0, 5.0, 6.0]})
+    imputer = MultivariateImputer()
+
+    with pytest.raises(ValueError, match="column names as strings"):
+        imputer(df, cols_to_impute=[0])
+    with pytest.raises(ValueError, match=r"Column names not found in Polars DataFrame: \['c'\]"):
+        imputer(df, cols_to_impute=["c"])
+    with pytest.raises(ValueError, match="integer row positions for a Polars DataFrame"):
+        imputer(df, rows_to_impute="a")
+    with pytest.raises(ValueError, match="integer row positions between 0 and 2"):
+        imputer(df, rows_to_impute=[0, 5])

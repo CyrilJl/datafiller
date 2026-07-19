@@ -86,3 +86,33 @@ def test_timeseries_imputer_polars_preserves_date_column_dtype():
 
     assert imputed.schema["date"] == pl.Date
     assert imputed.height == 5
+
+
+def test_timeseries_imputer_polars_validates_time_values_and_columns():
+    timestamps = [datetime(2024, 1, 1) + timedelta(hours=i) for i in range(6)]
+
+    with_null_time = pl.DataFrame({"timestamp": timestamps[:5] + [None], "value": np.arange(6, dtype=float)})
+    with pytest.raises(ValueError, match="cannot contain null values"):
+        TimeSeriesImputer(time_column="timestamp")(with_null_time)
+
+    time_only = pl.DataFrame({"timestamp": timestamps})
+    with pytest.raises(ValueError, match="at least one data column"):
+        TimeSeriesImputer(time_column="timestamp")(time_only)
+
+    with_string_column = pl.DataFrame(
+        {"timestamp": timestamps, "value": np.arange(6, dtype=float), "label": list("abcdef")}
+    )
+    with pytest.raises(ValueError, match=r"unsupported columns: \['label'\]"):
+        TimeSeriesImputer(time_column="timestamp")(with_string_column)
+
+
+def test_timeseries_imputer_polars_invalid_selectors_raise():
+    df = _polars_time_series()
+    imputer = TimeSeriesImputer(time_column="timestamp")
+
+    with pytest.raises(ValueError, match="must contain column names"):
+        imputer(df, cols_to_impute=[0])
+    with pytest.raises(ValueError, match="time_column cannot be imputed"):
+        imputer(df, cols_to_impute=["timestamp", "value"])
+    with pytest.raises(ValueError, match="not found in the regularized time grid"):
+        imputer(df, rows_to_impute=[datetime(2030, 1, 1)])
