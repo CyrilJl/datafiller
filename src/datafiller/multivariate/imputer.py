@@ -134,6 +134,18 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             print(X_imputed)
     """
 
+    _DEFAULT_MIN_SAMPLES_TRAIN = 20
+
+    @classmethod
+    def _resolve_min_samples_train(cls, min_samples_train: int | None) -> int:
+        return cls._DEFAULT_MIN_SAMPLES_TRAIN if min_samples_train is None else min_samples_train
+
+    @staticmethod
+    def _validate_fallback(fallback: str | None) -> str | None:
+        if fallback not in (None, "simple"):
+            raise ValueError(f"fallback must be 'simple' or None, got {fallback!r}")
+        return fallback
+
     def __init__(
         self,
         *,
@@ -158,13 +170,8 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         self._regressor_default = regressor is None
         self.regressor = regressor or FastRidge()
         self.verbose = int(verbose)
-        if min_samples_train is None:
-            self.min_samples_train = 20
-        else:
-            self.min_samples_train = min_samples_train
-        if fallback not in (None, "simple"):
-            raise ValueError(f"fallback must be 'simple' or None, got {fallback!r}")
-        self.fallback = fallback
+        self.min_samples_train = self._resolve_min_samples_train(min_samples_train)
+        self.fallback = self._validate_fallback(fallback)
         self.rng = rng
         self._rng = np.random.RandomState(rng)
         self._classifier_default = classifier is None
@@ -189,6 +196,12 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
 
     def set_params(self, **params) -> "MultivariateImputer":
         """Set parameters and refresh derived attributes."""
+        params = params.copy()
+        if "min_samples_train" in params:
+            params["min_samples_train"] = self._resolve_min_samples_train(params["min_samples_train"])
+        if "fallback" in params:
+            params["fallback"] = self._validate_fallback(params["fallback"])
+
         classifier_param = params.get("classifier", None) if "classifier" in params else None
         regressor_param = params.get("regressor", None) if "regressor" in params else None
         rng_changed = "rng" in params

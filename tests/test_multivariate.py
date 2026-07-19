@@ -175,6 +175,12 @@ def test_multivariate_imputer_default_min_samples_train_is_calibrated():
     assert MultivariateImputer().min_samples_train == 20
 
 
+def test_multivariate_imputer_set_params_resolves_default_min_samples_train():
+    imputer = MultivariateImputer(min_samples_train=1)
+    imputer.set_params(min_samples_train=None)
+    assert imputer.min_samples_train == 20
+
+
 def test_multivariate_imputer_fallback_fills_with_column_mean(nan_array):
     # Unreachable threshold: every imputed cell must come from the fallback
     imputer = MultivariateImputer(min_samples_train=nan_array.shape[0] + 1)
@@ -211,6 +217,11 @@ def test_multivariate_imputer_fallback_mode_for_categoricals():
 def test_multivariate_imputer_invalid_fallback_raises():
     with pytest.raises(ValueError, match="fallback"):
         MultivariateImputer(fallback="median")
+
+    imputer = MultivariateImputer()
+    with pytest.raises(ValueError, match="fallback"):
+        imputer.set_params(fallback="median")
+    assert imputer.fallback == "simple"
 
 
 def test_multivariate_imputer_boolean_support():
