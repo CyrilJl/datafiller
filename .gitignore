@@ -215,3 +215,4 @@ imputation_benchmark_comparison.png
 
 # Codex multivariate performance session artifacts
 docs/_static/performance/
+uv.lock
