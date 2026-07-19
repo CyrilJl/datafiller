@@ -79,7 +79,8 @@ jobs:
   typecheck:
     # ty is pre-1.0: pinned so a ty release cannot break CI without a code
     # change. Package dependencies are installed so imports resolve; torch
-    # (CPU) and polars cover the optional-dependency modules.
+    # (CPU), polars, and the test extra (pooch) cover the optional-dependency
+    # modules.
     name: Type check (ty)
     runs-on: ubuntu-latest
     steps:
@@ -94,7 +95,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install -e ".[polars]" ty==0.0.61
+          python -m pip install -e ".[test,polars]" ty==0.0.61
 
       - name: Type check
         run: ty check --python "$(which python)" src/datafiller
@@ -124,6 +125,18 @@ jobs:
 
       - name: Test with coverage
         run: pytest -q --ignore=tests/test_timing.py --cov=datafiller --cov-report=term-missing --cov-fail-under=85
+
+  # Single aggregate check for branch protection: requiring only "CI success"
+  # stays correct when the test matrix changes.
+  ci-success:
+    name: CI success
+    if: always()
+    needs: [lint, typecheck, test, coverage, polars]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all jobs succeeded
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
 
   polars:
     strategy:
