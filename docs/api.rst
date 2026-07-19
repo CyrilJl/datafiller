@@ -43,6 +43,27 @@ Models
       :undoc-members:
       :show-inheritance:
 
+Exceptions
+**********
+
+All validation errors raised by the library derive from
+:class:`~datafiller.DataFillerError`, so a single ``except DataFillerError``
+catches every datafiller-specific error. The concrete classes also inherit
+from the matching builtin (``ValueError`` or ``TypeError``), so existing
+handlers keep working.
+
+.. admonition:: Exception classes
+   :class: dropdown
+
+   .. autoclass:: datafiller.DataFillerError
+      :show-inheritance:
+
+   .. autoclass:: datafiller.DataFillerValueError
+      :show-inheritance:
+
+   .. autoclass:: datafiller.DataFillerTypeError
+      :show-inheritance:
+
 ***********************
 Low-Level Functions
 ***********************

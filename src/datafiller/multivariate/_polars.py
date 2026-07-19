@@ -8,6 +8,8 @@ from typing import Any
 
 import numpy as np
 
+from ..exceptions import DataFillerValueError
+
 
 def _get_polars():
     import polars
@@ -32,18 +34,21 @@ def polars_cols_to_indices(cols_to_impute, columns: list[str]) -> np.ndarray:
     if cols_to_impute is None:
         return np.arange(len(columns))
 
-    names = (
+    requested = (
         [cols_to_impute]
         if isinstance(cols_to_impute, str) or not isinstance(cols_to_impute, Iterable)
         else list(cols_to_impute)
     )
-    if not all(isinstance(name, str) for name in names):
-        raise ValueError("cols_to_impute must contain Polars column names as strings.")
+    names: list[str] = []
+    for name in requested:
+        if not isinstance(name, str):
+            raise DataFillerValueError("cols_to_impute must contain Polars column names as strings.")
+        names.append(name)
 
     positions = {name: i for i, name in enumerate(columns)}
     missing = [name for name in names if name not in positions]
     if missing:
-        raise ValueError(f"Column names not found in Polars DataFrame: {missing}")
+        raise DataFillerValueError(f"Column names not found in Polars DataFrame: {missing}")
     return np.array([positions[name] for name in names], dtype=np.int64)
 
 
@@ -54,10 +59,10 @@ def validate_polars_rows(rows_to_impute, height: int):
     if isinstance(rows_to_impute, np.ndarray):
         return rows_to_impute
     if isinstance(rows_to_impute, str) or not isinstance(rows_to_impute, Iterable):
-        raise ValueError("rows_to_impute must contain integer row positions for a Polars DataFrame.")
+        raise DataFillerValueError("rows_to_impute must contain integer row positions for a Polars DataFrame.")
     rows = list(rows_to_impute)
     if not all(isinstance(row, (int, np.integer)) and 0 <= row < height for row in rows):
-        raise ValueError(f"rows_to_impute must contain integer row positions between 0 and {height - 1}.")
+        raise DataFillerValueError(f"rows_to_impute must contain integer row positions between 0 and {height - 1}.")
     return rows
 
 
@@ -107,7 +112,7 @@ def encode_polars_dataframe(df) -> dict:
             encoded_arrays.append(series.cast(pl.Float32).to_numpy().reshape(-1, 1))
             numeric_main_indices.append(main_idx)
         else:
-            raise ValueError(
+            raise DataFillerValueError(
                 f"Unsupported Polars dtype for column {col!r}: {dtype}. "
                 "Supported dtypes are numeric, Boolean, String, Categorical, and Enum."
             )
@@ -137,7 +142,7 @@ def decode_polars_dataframe(x_imputed: np.ndarray, metadata: dict):
 
         if encoded_idx in metadata["categorical_targets"]:
             categories = metadata["categorical_targets"][encoded_idx]
-            decoded = [None] * len(col_data)
+            decoded: list[Any] = [None] * len(col_data)
             if categories:
                 for row, value in enumerate(col_data):
                     if np.isfinite(value):

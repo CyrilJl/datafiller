@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+from ..exceptions import DataFillerValueError
+
 
 def add_mar(df: pd.DataFrame, nan_ratio: float, rng: int | np.random.Generator | None = None) -> pd.DataFrame:
     """Add Missing At Random (MAR) values to a DataFrame.
@@ -17,7 +19,7 @@ def add_mar(df: pd.DataFrame, nan_ratio: float, rng: int | np.random.Generator |
         ValueError: If nan_ratio is not between 0 and 1
     """
     if not 0 <= nan_ratio <= 1:
-        raise ValueError("nan_ratio must be between 0 and 1")
+        raise DataFillerValueError("nan_ratio must be between 0 and 1")
 
     gen = np.random.default_rng(rng)
     df_copy = df.copy()
@@ -44,7 +46,7 @@ def add_contiguous_missing(
         ValueError: If frac_columns or length are invalid
     """
     if not 0 <= frac_columns <= 1:
-        raise ValueError("frac_columns must be between 0 and 1")
+        raise DataFillerValueError("frac_columns must be between 0 and 1")
 
     gen = np.random.default_rng(rng)
     df_copy = df.copy()
