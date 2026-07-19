@@ -1,8 +1,8 @@
 Changelog
 =========
 
-Unreleased
-----------
+v0.3.2 (2026-07-19)
+-------------------
 
 - Optional Polars support: ``MultivariateImputer`` now accepts eager Polars DataFrames with numeric, Boolean, String, Categorical, and Enum columns, while ``TimeSeriesImputer`` accepts a Polars Date/Datetime ``time_column`` and preserves it when regularizing timestamp gaps. Both imputers return Polars output for Polars input; install with ``datafiller[polars]``.
 - **Behavior change:** ``min_samples_train`` now defaults to 20 (was 1). A benchmark across real and synthetic datasets showed that models fitted on a handful of rows produce imputations worse than plain column means once missingness reaches ~25%; thresholds of 10-20 were consistently best. Pass ``min_samples_train=1`` to restore the previous behavior.
