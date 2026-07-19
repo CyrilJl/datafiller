@@ -151,10 +151,16 @@ Parameters
 ----------
 
 The main initialization parameters are ``regressor`` and ``classifier`` to set the numeric/categorical models, plus ``scoring``, ``rng``,
-``min_samples_train``, and ``verbose`` to control feature selection, reproducibility, training thresholds, and logging. Call parameters
-include ``rows_to_impute`` and ``cols_to_impute`` to target subsets and ``n_nearest_features`` to limit the features used per imputation;
-setting ``n_nearest_features`` is recommended to reduce computation time. For a complete list and full descriptions, see the :doc:`api`
-reference.
+``min_samples_train``, ``fallback``, and ``verbose`` to control feature selection, reproducibility, training thresholds, last-resort
+filling, and logging. Call parameters include ``rows_to_impute`` and ``cols_to_impute`` to target subsets and ``n_nearest_features`` to
+limit the features used per imputation; setting ``n_nearest_features`` is recommended to reduce computation time. For a complete list and
+full descriptions, see the :doc:`api` reference.
+
+Training-data selection follows a three-step path for each missingness pattern — **complete rows → optimask → fallback**: rows fully
+observed on the pattern's features are used when at least ``min_samples_train`` (default 20) of them exist; otherwise `optimask` finds the
+largest NaN-free rectangle, preferring ones that keep at least ``min_samples_train`` rows; and the rare cells that still cannot get a model
+are filled with the column mean (most frequent category for categoricals) by default — pass ``fallback=None`` to leave them as NaN.
+See :doc:`algorithm` for details.
 
 GPU Acceleration
 ================
@@ -276,6 +282,7 @@ Parameters
 
 Initialization parameters include ``lags`` for autoregressive features (positive integers create lags like `t-1`, negative integers create
 leads like `t+1`), ``regressor`` for the numeric model, ``interpolate_gaps_less_than`` to pre-fill short gaps, ``add_time_features`` to
-include deterministic calendar/trend predictors, and the shared controls ``scoring``, ``rng``, ``min_samples_train``, and ``verbose``. Call parameters include ``rows_to_impute`` and ``cols_to_impute`` to target
+include deterministic calendar/trend predictors, and the shared controls ``scoring``, ``rng``, ``min_samples_train``, ``fallback``, and
+``verbose`` (the training-data selection path described above applies unchanged). Call parameters include ``rows_to_impute`` and ``cols_to_impute`` to target
 subsets, ``n_nearest_features`` to limit features used for imputation (recommended to reduce computation time), and ``before``/``after`` to
 restrict the time window. For a complete list and full descriptions, see the :doc:`api` reference.

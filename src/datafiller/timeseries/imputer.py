@@ -133,7 +133,16 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
 
     def set_params(self, **params) -> "TimeSeriesImputer":
         """Set parameters and refresh dependent objects."""
-        rebuild_keys = {"regressor", "classifier", "min_samples_train", "rng", "verbose", "scoring", "device"}
+        rebuild_keys = {
+            "regressor",
+            "classifier",
+            "min_samples_train",
+            "fallback",
+            "rng",
+            "verbose",
+            "scoring",
+            "device",
+        }
         rebuild = any(key in params for key in rebuild_keys)
 
         super().set_params(**params)

@@ -47,6 +47,19 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
     one-hot encoded internally and imputed with a classifier before returning
     the original column layout.
 
+    Rows to impute are grouped by their pattern of observed features, and the
+    training data for each pattern is selected along a fixed three-step path:
+
+    1. **Complete rows** — the rows fully observed on the pattern's features
+       are used directly when at least `min_samples_train` of them exist.
+    2. **optimask** — otherwise, the `optimask` algorithm searches for the
+       largest NaN-free rectangular subset, trading feature columns for
+       training rows and preferring rectangles that keep at least
+       `min_samples_train` rows.
+    3. **Fallback** — cells whose pattern still cannot reach the threshold
+       are filled by the `fallback` strategy (column mean / most frequent
+       category by default, or left NaN with ``fallback=None``).
+
     Args:
         regressor (RegressorMixin, optional): A scikit-learn compatible
             regressor. It should be a lightweight model, as it is fitted many

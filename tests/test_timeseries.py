@@ -97,6 +97,13 @@ def test_timeseries_imputer_invalid_lags():
         TimeSeriesImputer(lags=[1, 0])
 
 
+def test_timeseries_imputer_set_params_propagates_fallback():
+    imputer = TimeSeriesImputer()
+    assert imputer.multivariate_imputer.fallback == "mean"
+    imputer.set_params(fallback=None)
+    assert imputer.multivariate_imputer.fallback is None
+
+
 def test_timeseries_imputer_n_nearest_features_tracking(nan_df):
     imputer = TimeSeriesImputer(rng=0, lags=[1, -1])
     n_nearest_features = 3
