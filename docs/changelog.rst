@@ -10,6 +10,13 @@ v0.3.2 (2026-07-19)
 - ``optimask`` now takes the caller's row requirement into account (``min_rows``): among the NaN-free rectangles on its pareto front, it prefers ones with at least ``min_samples_train`` rows over strictly larger ones with fewer, and only falls back to the unconstrained maximum-area choice when the constraint is infeasible. This removes most of the imputation-coverage loss previously caused by strict ``min_samples_train`` values on heavily missing data, and is byte-identical to the previous selection whenever the constraint does not bind.
 - Optional GPU acceleration: ``MultivariateImputer`` and ``TimeSeriesImputer`` accept a ``device`` parameter (e.g. ``"cuda"``) that solves all missingness patterns of a column as batched tensor operations. Requires the new ``datafiller[gpu]`` extra (PyTorch), which stays entirely optional: with the default ``device=None`` PyTorch is never imported. Imputed values match the CPU path up to float32 rounding; categorical targets, custom regressors, and patterns with too few complete rows keep using the CPU implementation.
 
+v0.3.1 (2026-07-04)
+-------------------
+
+- ``ExtremeLearningMachine`` rewritten for speed and memory: BLAS-backed projection instead of a numba kernel, and chunked Gram-based fits/predicts above 65,536 rows so the full hidden matrix is never materialized (about 2.6x faster standalone fit, 7x lower peak memory on large fits).
+- Fixed a correctness bug where refitting the same ``ExtremeLearningMachine`` instance on inputs of varying widths (as ``MultivariateImputer`` does per missingness pattern) read past or truncated the random projection matrix, producing non-finite or corrupted imputations. Projections are now sampled lazily per input width and cached, seeded reproducibly.
+- Fixed an accuracy issue that made ``ExtremeLearningMachine`` systematically underperform ``FastRidge`` in typical imputation workloads: projection weights are now fan-in scaled, and a new ``min_samples_per_feature`` parameter (default 5) caps the hidden width by the number of training samples so small per-pattern fits are no longer severely underdetermined.
+
 v0.3 (2026-07-04)
 -----------------
 
