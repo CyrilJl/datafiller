@@ -93,9 +93,8 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             mean (most frequent category for categorical columns). ``None``
             leaves them as NaN.
         rng (int, optional): A seed for the random number generator. This is
-            used for reproducible feature sampling when `n_nearest_features`
-            is not None, and for the default categorical classifier when one
-            is not provided. Defaults to None.
+            used by the default categorical classifier when one is not
+            provided. Defaults to None.
         scoring (str or callable, optional): The scoring function to use for
             feature selection.
             If 'default', the default scoring function is used.
@@ -185,7 +184,6 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         self.min_samples_train = self._resolve_min_samples_train(min_samples_train)
         self.fallback = self._validate_fallback(fallback)
         self.rng = rng
-        self._rng = np.random.RandomState(rng)
         self._classifier_default = classifier is None
         self.classifier: Any = classifier or DecisionTreeClassifier(max_depth=4, random_state=rng)
         if scoring != "default" and not callable(scoring):
@@ -228,7 +226,6 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 self.regressor = FastRidge()
 
         if rng_changed:
-            self._rng = np.random.RandomState(self.rng)
             if self._classifier_default:
                 self.classifier = DecisionTreeClassifier(max_depth=4, random_state=self.rng)
 
@@ -260,23 +257,14 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         cols_to_sample_from = cols_to_sample_from[cols_to_sample_from != col_to_impute]
 
         if n_nearest_features is not None:
-            # The scores are for all n_features, but we are sampling from n_features - 1
+            # The scores cover all n_features, but selection excludes the target itself.
             # The scores array is (n_cols_to_impute, n_features)
             # The scores for the column to impute against itself should be 0 or NaN.
             assert scores is not None
-            p = scores[scores_index][cols_to_sample_from]
-            p = p / p.sum()
-            p[np.isnan(p)] = 0
-            if p.sum() == 0:
-                p = None
+            feature_scores = np.nan_to_num(scores[scores_index][cols_to_sample_from], nan=-np.inf)
             n_nearest_features = min(n_nearest_features, len(cols_to_sample_from))
-            sampled_cols = self._rng.choice(
-                a=cols_to_sample_from,
-                size=n_nearest_features,
-                replace=False,
-                p=p,
-            )
-            return np.sort(sampled_cols)
+            ranking = np.argsort(-feature_scores, kind="stable")
+            return np.sort(cols_to_sample_from[ranking[:n_nearest_features]])
         return cols_to_sample_from
 
     def _encode_dataframe(self, df: pd.DataFrame) -> dict:
@@ -747,9 +735,11 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 - If `x` is a pandas or Polars DataFrame, this must be a list of column names.
                 If None, all columns are considered for imputation. Defaults to None.
             n_nearest_features: The number of features to use for
-                imputation. If it's an int, it's the absolute number of
-                features. If it's a float, it's the fraction of features to
-                use. If None, all features are used. Defaults to None.
+                imputation. The features with the highest shared-observation
+                and absolute-correlation scores are selected. If it's an int,
+                it's the absolute number of features. If it's a float, it's
+                the fraction of features to use. If None, all features are
+                used. Defaults to None.
             normalize: Whether to normalize numeric columns before imputation,
                 then transform imputed values back to the original scale.
                 Defaults to True.

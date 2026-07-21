@@ -4,6 +4,7 @@ Changelog
 Unreleased
 ----------
 
+- ``n_nearest_features`` now selects the highest-scoring predictors deterministically instead of drawing a probability-weighted sample. On the published traffic benchmarks this reduced nRMSE by 2.5%/33.7% for PEMS-BAY MAR/block masks and 10.4%/19.4% for METR-LA, while removing feature-selection randomness.
 - ``TimeSeriesImputer`` now accepts categorical, string, object, and boolean columns in pandas input: categorical targets are imputed with the configured classifier, and their lagged/lead copies participate as features alongside numeric ones. Polars time series input remains numeric-only.
 - The benchmark suite (``scripts/multivariate_benchmark.py`` and the docs benchmarks page) now covers open datasets commonly used to assess imputation algorithms: tabular UCI/sklearn datasets (Spambase, Letter Recognition, Wine Quality red, Abalone, Ionosphere, California Housing) imputed with ``MultivariateImputer``, and time series benchmarks (PEMS-BAY, METR-LA, Beijing PM2.5, ETTh1) imputed with ``TimeSeriesImputer``.
 

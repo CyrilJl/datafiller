@@ -307,6 +307,27 @@ def test_multivariate_imputer_n_nearest_features_tracking(nan_array, use_df):
         assert col not in features
 
 
+def test_multivariate_imputer_selects_top_scoring_nearest_features():
+    scores = np.array(
+        [
+            [0.0, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 0.0],
+            [0.1, 0.9, np.nan, 0.8, 0.2],
+        ]
+    )
+    imputer = MultivariateImputer(rng=0)
+
+    selected = imputer._get_sampled_cols(
+        n_features=5,
+        col_to_impute=2,
+        n_nearest_features=2,
+        scores=scores,
+        scores_index=2,
+    )
+
+    np.testing.assert_array_equal(selected, np.array([1, 3]))
+
+
 def test_complete_rows_excluding_returns_rows_without_nans():
     mask_nan = np.array(
         [

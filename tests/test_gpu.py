@@ -43,7 +43,7 @@ def test_gpu_matches_cpu_all_features():
 
 
 @requires_cuda
-def test_gpu_matches_cpu_with_feature_sampling():
+def test_gpu_matches_cpu_with_feature_selection():
     x = make_correlated_matrix(m=600, n=40)
     out_cpu = MultivariateImputer(rng=0)(x, n_nearest_features=10)
     out_gpu = MultivariateImputer(rng=0, device="cuda")(x, n_nearest_features=10)
