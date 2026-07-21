@@ -41,8 +41,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             impute. ``"simple"`` (default) fills them with the column mean (mode
             for categoricals); ``None`` leaves them as NaN.
         rng (int, optional): A seed for the random number generator. This is
-            used for reproducible feature sampling when `n_nearest_features`
-            is not None. Defaults to None.
+            used by the default categorical classifier. Defaults to None.
         verbose (int, optional): The verbosity level. Defaults to 0.
         scoring (str or callable, optional): The scoring function to use for
             feature selection. If 'default', the default scoring function is
@@ -452,9 +451,11 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             cols_to_impute: The indices or names of columns
                 to impute. If None, all columns are considered. Defaults to None.
             n_nearest_features: The number of features to use for
-                imputation. If it's an int, it's the absolute number of
-                features. If it's a float, it's the fraction of features to
-                use. If None, all features are used. Defaults to None.
+                imputation. The features with the highest shared-observation
+                and absolute-correlation scores are selected. If it's an int,
+                it's the absolute number of features. If it's a float, it's
+                the fraction of features to use. If None, all features are
+                used. Defaults to None.
             before: A timestamp-like object. If specified, only rows
                 before this timestamp are imputed. Can be anything that can be
                 parsed by ``lambda x: pd.to_datetime(str(x))``. Defaults to None.

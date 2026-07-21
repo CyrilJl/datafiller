@@ -31,6 +31,8 @@ Patterns that end up with identical training rows and columns share a single fit
 
 About the threshold: ``min_samples_train`` defaults to 20, calibrated on a benchmark across real and synthetic datasets. Models fitted on just a handful of rows produce imputations that can be worse than plain column means once missingness reaches roughly 25%, while thresholds of 10–20 were consistently close to the per-dataset optimum. Below ~25% missingness, complete rows are abundant and the threshold rarely matters.
 
+When ``n_nearest_features`` limits the predictor count, the selected features are the highest-scoring ones for that target. The default score combines absolute correlation with the proportion of rows where the target and predictor are both observed. Selecting the top scores deterministically gives every model the strongest available predictors; it also avoids the overhead and quality variance of probability-weighted random sampling.
+
 Making It Fast
 **************
 

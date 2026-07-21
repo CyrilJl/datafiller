@@ -70,3 +70,38 @@ question; keep the supporting scripts in `perf/` (gitignored) and cite them.
   (e.g. BreastCancer 25% MAR at t=200: 5% → 100% imputed; Wine 40% MAR at t=50: 4.7% → 99.2%),
   adjusted error never worse in any of 576 compared cells. The optimal default stays 20; overshooting
   it is now survivable. General lesson: **optimize what the caller needs, not a proxy**.
+
+### 2026-07-19 — Deterministic nearest-feature selection
+- `n_nearest_features` used to draw without replacement with probabilities proportional to the
+  feature scores. That injects weaker predictors even though the library produces one imputation,
+  not a multiple-imputation ensemble where sampling diversity would be useful.
+- Evidence: `perf/nearest_feature_selection_eval.py` and the regenerated
+  `docs/_static/multivariate_benchmark_results.csv`.
+- Selecting the top scores instead improved every tested traffic scenario. On the published masks,
+  nRMSE fell 2.5% / 33.7% for PEMS-BAY MAR / blocks and 10.4% / 19.4% for METR-LA. On independent
+  MAR masks, PEMS-BAY improved 5.6% and METR-LA 7.3%.
+- The change is at least as fast: paired independent-mask runs were 1.5% faster on PEMS-BAY and 3.9%
+  faster on METR-LA. Sorting a few hundred scores is negligible compared with scoring and fitting,
+  and avoids probability normalization plus random sampling. The tabular benchmark does not set
+  `n_nearest_features`, so its models are unchanged.
+- Final unclamped published-benchmark audit (identical masks): across all 30 numeric scenarios,
+  geometric-mean nRMSE fell 2.5%; the four traffic scenarios that use `n_nearest_features` improved,
+  the other 26 were identical, and none regressed.
+
+### 2026-07-20 — Exploring alternatives to top-score nearest features
+- Broad sweep: 570 screening runs across two traffic subsets and three wide/tabular datasets, using
+  light MAR, heavy MAR, and block missingness. Compared deterministic top scores with uniform and
+  score-weighted sampling, squared/square-root score temperatures, sampling from the top `2k`,
+  50%/75% elite-plus-exploration hybrids, and deterministic rank-spread hybrids. Evidence:
+  `perf/feature_selection_strategy_sweep.py` and `perf/analyze_feature_selection_strategy.py`.
+- Deterministic top-score selection was the only strategy without a screening regression. The closest
+  stochastic alternative, the 75%-elite hybrid, was 5.5% worse by geometric-mean nRMSE; squared-score
+  sampling was 8.7% worse, ordinary score weighting 17.6% worse, and uniform sampling 61.9% worse.
+  A deterministic 75%-elite rank spread came closest at 0.5% worse overall, but still had a 21.8%
+  worst-case regression.
+- Exploration sometimes helped light MAR on small data (the 50%-elite hybrid gained 4.5% there), but
+  did not generalize. In 40 full-size PEMS-BAY/METR-LA runs covering MAR and three block-mask seeds,
+  that hybrid was 30.1% worse geometrically and up to 2.28× worse; deterministic 75%-elite rank spread
+  was 12.2% worse geometrically and up to 33.3% worse. Both were also worse across the two full MAR
+  scenarios alone. Keep deterministic top-score selection as the single-imputation default; reserve
+  randomized selection for an explicit ensemble/diversity use case rather than presumed accuracy.
