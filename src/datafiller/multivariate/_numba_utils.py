@@ -1,7 +1,253 @@
 """Numba-jitted utility functions for the multivariate imputer."""
 
 import numpy as np
-from numba import njit
+from numba import get_num_threads, njit, prange
+
+#: Row-block sizing for the fused full-matrix kernels. Each parallel block owns
+#: private accumulators, so the block count trades parallelism against scratch
+#: memory instead of relying on atomics.
+_MIN_BLOCK_ROWS = 1024
+_SCRATCH_BUDGET_BYTES = 16_000_000
+
+
+def row_blocks(n_rows: int, scratch_bytes_per_block: int) -> int:
+    """Number of row blocks to split a full-matrix pass into.
+
+    Enough blocks to keep every core busy, but never so many that the private
+    per-block accumulators dominate memory.
+    """
+    by_rows = max(1, (n_rows + _MIN_BLOCK_ROWS - 1) // _MIN_BLOCK_ROWS)
+    by_memory = max(1, _SCRATCH_BUDGET_BYTES // max(scratch_bytes_per_block, 1))
+    return int(min(by_rows, 4 * get_num_threads(), by_memory))
+
+
+@njit(boundscheck=False, cache=True, parallel=True)
+def nan_mask_count_sum(x: np.ndarray, n_blocks: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.bool_]:
+    """NaN mask, observed count/sum per column and an infinity flag, in one pass.
+
+    Fuses what used to be a `np.isnan` scan, an `np.isinf(x).any()` scan and the
+    first pass of the column statistics into a single traversal of `x`.
+
+    Args:
+        x: The input matrix (floating point).
+        n_blocks: Number of row blocks processed in parallel.
+
+    Returns:
+        A tuple `(mask_nan, counts, sums, has_inf)` where `counts` and `sums`
+        cover the observed (non-NaN) cells of each column, accumulated in
+        float64 regardless of the input precision.
+    """
+    m, n = x.shape
+    mask = np.empty((m, n), dtype=np.bool_)
+    block = (m + n_blocks - 1) // n_blocks
+    counts_p = np.zeros((n_blocks, n), dtype=np.int64)
+    sums_p = np.zeros((n_blocks, n), dtype=np.float64)
+    inf_p = np.zeros(n_blocks, dtype=np.bool_)
+    for b in prange(n_blocks):  # ty: ignore[not-iterable]
+        i0 = b * block
+        i1 = min(i0 + block, m)
+        counts = counts_p[b]
+        sums = sums_p[b]
+        has_inf = False
+        for i in range(i0, i1):
+            row = x[i]
+            mask_row = mask[i]
+            for j in range(n):
+                v = row[j]
+                if np.isnan(v):
+                    mask_row[j] = True
+                else:
+                    mask_row[j] = False
+                    counts[j] += 1
+                    sums[j] += v
+                    if np.isinf(v):
+                        has_inf = True
+        inf_p[b] = has_inf
+    return mask, counts_p.sum(axis=0), sums_p.sum(axis=0), inf_p.any()
+
+
+@njit(boundscheck=False, cache=True, parallel=True)
+def centered_sumsq(x: np.ndarray, means: np.ndarray, n_blocks: int) -> np.ndarray:
+    """Per-column sum of squared deviations from `means` over observed cells."""
+    m, n = x.shape
+    block = (m + n_blocks - 1) // n_blocks
+    ss_p = np.zeros((n_blocks, n), dtype=np.float64)
+    for b in prange(n_blocks):  # ty: ignore[not-iterable]
+        i0 = b * block
+        i1 = min(i0 + block, m)
+        ss = ss_p[b]
+        for i in range(i0, i1):
+            row = x[i]
+            for j in range(n):
+                v = row[j]
+                if not np.isnan(v):
+                    d = v - means[j]
+                    ss[j] += d * d
+    return ss_p.sum(axis=0)
+
+
+@njit(boundscheck=False, cache=True, parallel=True)
+def normalize_with_copy(x: np.ndarray, means: np.ndarray, scales: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Return `((x - means) / scales, x.copy())` in a single pass over `x`.
+
+    The imputer needs the standardized matrix to fit models on and an
+    original-scale copy to write imputed values into; producing both from one
+    read replaces two full copies plus two in-place rescaling passes.
+    """
+    m, n = x.shape
+    normalized = np.empty((m, n), dtype=x.dtype)
+    original = np.empty((m, n), dtype=x.dtype)
+    for i in prange(m):  # ty: ignore[not-iterable]
+        row = x[i]
+        row_normalized = normalized[i]
+        row_original = original[i]
+        for j in range(n):
+            v = row[j]
+            row_original[j] = v
+            row_normalized[j] = (v - means[j]) / scales[j]
+    return normalized, original
+
+
+@njit(boundscheck=False, cache=True, parallel=True)
+def normalize_in_place_with_copy(x: np.ndarray, means: np.ndarray, scales: np.ndarray) -> np.ndarray:
+    """Standardize `x` in place and return the original-scale copy.
+
+    Same single read of `x` and same two writes as :func:`normalize_with_copy`,
+    but only one new full-size array: for callers that own their input buffer
+    this removes a whole copy of the matrix from the peak footprint.
+    """
+    m, n = x.shape
+    original = np.empty((m, n), dtype=x.dtype)
+    for i in prange(m):  # ty: ignore[not-iterable]
+        row = x[i]
+        row_original = original[i]
+        for j in range(n):
+            v = row[j]
+            row_original[j] = v
+            row[j] = (v - means[j]) / scales[j]
+    return original
+
+
+@njit(boundscheck=False, cache=True, parallel=True)
+def copy_matrix(x: np.ndarray) -> np.ndarray:
+    """Parallel equivalent of `x.copy()` for large matrices."""
+    m, n = x.shape
+    out = np.empty((m, n), dtype=x.dtype)
+    for i in prange(m):  # ty: ignore[not-iterable]
+        row = x[i]
+        out_row = out[i]
+        for j in range(n):
+            out_row[j] = row[j]
+    return out
+
+
+@njit(boundscheck=False, cache=True, parallel=True)
+def gather_columns_transposed(x: np.ndarray, cols: np.ndarray) -> np.ndarray:
+    """Pick columns out of `x` into a `(len(cols), n_rows)` array.
+
+    Cache-blocked, so the strided reads stay local. The transpose of the result
+    is Fortran-contiguous, which is the layout a pandas DataFrame stores
+    internally: wrapping it costs nothing, where handing pandas a row-major
+    slice makes it transpose the whole thing itself.
+    """
+    n_rows = x.shape[0]
+    n_cols = len(cols)
+    out = np.empty((n_cols, n_rows), dtype=x.dtype)
+    block = 64
+    n_row_blocks = (n_rows + block - 1) // block
+    for bi in prange(n_row_blocks):  # ty: ignore[not-iterable]
+        row_start = bi * block
+        row_end = min(row_start + block, n_rows)
+        for col_start in range(0, n_cols, block):
+            col_end = min(col_start + block, n_cols)
+            for i in range(row_start, row_end):
+                row = x[i]
+                for j in range(col_start, col_end):
+                    out[j, i] = row[cols[j]]
+    return out
+
+
+@njit(boundscheck=False, cache=True)
+def all_nan_columns(x: np.ndarray) -> np.ndarray:
+    """Mask of columns that hold no observed value.
+
+    Scans rows and stops as soon as every column has been seen observed, which
+    is the overwhelmingly common case and makes this far cheaper than
+    materializing `np.isnan(x)` to reduce it.
+    """
+    m, n = x.shape
+    seen = np.zeros(n, dtype=np.bool_)
+    remaining = n
+    for i in range(m):
+        row = x[i]
+        for j in range(n):
+            if not seen[j] and not np.isnan(row[j]):
+                seen[j] = True
+                remaining -= 1
+        if remaining == 0:
+            break
+    return ~seen
+
+
+@njit(boundscheck=False, cache=True, parallel=True)
+def masked_cross_moments(
+    x: np.ndarray,
+    means: np.ndarray,
+    cols: np.ndarray,
+    n_blocks: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Pairwise co-observation counts and centered cross-products for `cols`.
+
+    For every target column `c` in `cols` and every column `j`, accumulates the
+    number of rows where both are observed and the sum of the products of their
+    deviations from `means` over those rows. Also returns each column's observed
+    count and centered sum of squares, so a caller can derive correlations
+    without a second traversal.
+    """
+    m, n = x.shape
+    n_cols = len(cols)
+    block = (m + n_blocks - 1) // n_blocks
+    shared_p = np.zeros((n_blocks, n_cols, n), dtype=np.float64)
+    cross_p = np.zeros((n_blocks, n_cols, n), dtype=np.float64)
+    sumsq_p = np.zeros((n_blocks, n), dtype=np.float64)
+    counts_p = np.zeros((n_blocks, n), dtype=np.int64)
+    for b in prange(n_blocks):  # ty: ignore[not-iterable]
+        i0 = b * block
+        i1 = min(i0 + block, m)
+        shared = shared_p[b]
+        cross = cross_p[b]
+        sumsq = sumsq_p[b]
+        counts = counts_p[b]
+        centered = np.empty(n, dtype=np.float64)
+        observed = np.empty(n, dtype=np.float64)
+        for i in range(i0, i1):
+            row = x[i]
+            for j in range(n):
+                v = row[j]
+                if np.isnan(v):
+                    centered[j] = 0.0
+                    observed[j] = 0.0
+                else:
+                    centered[j] = v - means[j]
+                    observed[j] = 1.0
+                    counts[j] += 1
+            for j in range(n):
+                sumsq[j] += centered[j] * centered[j]
+            for t in range(n_cols):
+                c = cols[t]
+                if observed[c] != 0.0:
+                    value = centered[c]
+                    cross_t = cross[t]
+                    shared_t = shared[t]
+                    for j in range(n):
+                        cross_t[j] += value * centered[j]
+                        shared_t[j] += observed[j]
+    return (
+        shared_p.sum(axis=0),
+        cross_p.sum(axis=0),
+        sumsq_p.sum(axis=0),
+        counts_p.sum(axis=0),
+    )
 
 
 @njit(boundscheck=False, cache=True)
@@ -116,42 +362,6 @@ def complete_rows_excluding(
             out[p] = r
             p += 1
     return out
-
-
-@njit(boundscheck=False, cache=True)
-def extra_rows_excluding(
-    row_nan_count: np.ndarray,
-    col_ptr: np.ndarray,
-    col_rows: np.ndarray,
-    excluded_cols: np.ndarray,
-    hits: np.ndarray,
-    stamp: np.ndarray,
-    epoch: np.int64,
-) -> tuple[np.ndarray, np.int64]:
-    """Like :func:`complete_rows_excluding` but only lists rows that have NaNs.
-
-    Returns the rows whose NaNs all fall inside `excluded_cols` while having
-    at least one NaN (the "extra" rows relative to the globally complete
-    rows), together with the total count of complete rows.
-    """
-    _mark_rows_with_nan_in_excluded(col_ptr, col_rows, excluded_cols, hits, stamp, epoch)
-    m = len(row_nan_count)
-    n_extra = 0
-    n_complete = 0
-    for r in range(m):
-        k = row_nan_count[r]
-        if k == 0:
-            n_complete += 1
-        elif stamp[r] == epoch and hits[r] == k:
-            n_extra += 1
-    out = np.empty(n_extra, dtype=np.uint32)
-    p = 0
-    for r in range(m):
-        k = row_nan_count[r]
-        if k > 0 and stamp[r] == epoch and hits[r] == k:
-            out[p] = r
-            p += 1
-    return out, np.int64(n_complete + n_extra)
 
 
 @njit(boundscheck=False, cache=True)

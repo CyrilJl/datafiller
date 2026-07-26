@@ -59,11 +59,29 @@ def _dataframe_cols_to_impute_to_indices(cols_to_impute, columns):
     return indexer
 
 
+def _validate_matrix(x) -> None:
+    """Validates the shape and dtype of the input matrix.
+
+    Args:
+        x: The input data matrix.
+
+    Raises:
+        DataFillerValueError: If `x` is not a 2D numeric numpy array.
+    """
+    if not isinstance(x, np.ndarray):
+        raise DataFillerValueError("x must be a numpy array.")
+    if x.ndim != 2:
+        raise DataFillerValueError(f"x must be a 2D array, but got {x.ndim} dimensions.")
+    if not np.issubdtype(x.dtype, np.number):
+        raise DataFillerValueError(f"x must have a numeric dtype, but got {x.dtype}.")
+
+
 def _validate_input(
     x: np.ndarray,
     rows_to_impute: None | int | Iterable,
     cols_to_impute: None | int | Iterable,
     n_nearest_features: None | float | int,
+    has_inf: bool | None = None,
 ) -> int | None:
     """Validates the inputs to the `__call__` method.
 
@@ -72,6 +90,8 @@ def _validate_input(
         rows_to_impute: Rows to impute.
         cols_to_impute: Columns to impute.
         n_nearest_features: Number of features to use for imputation.
+        has_inf: Whether `x` contains an infinity, when the caller already
+            knows it. Avoids a redundant full scan of the matrix.
 
     Returns:
         The validated and processed number of nearest features.
@@ -79,13 +99,10 @@ def _validate_input(
     Raises:
         ValueError: If any of the inputs are invalid.
     """
-    if not isinstance(x, np.ndarray):
-        raise DataFillerValueError("x must be a numpy array.")
-    if x.ndim != 2:
-        raise DataFillerValueError(f"x must be a 2D array, but got {x.ndim} dimensions.")
-    if not np.issubdtype(x.dtype, np.number):
-        raise DataFillerValueError(f"x must have a numeric dtype, but got {x.dtype}.")
-    if np.isinf(x).any():
+    _validate_matrix(x)
+    if has_inf is None:
+        has_inf = bool(np.isinf(x).any())
+    if has_inf:
         raise DataFillerValueError("x cannot contain infinity.")
 
     m, n = x.shape

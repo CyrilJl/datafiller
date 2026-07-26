@@ -7,7 +7,7 @@
 - `docs/` hosts documentation sources and static assets.
 
 ## Algorithm Overview
-- Rows to impute are grouped by their pattern of observed features; each pattern gets a model trained on the rows complete for those features (solved from an incrementally accumulated Gram matrix for the default `FastRidge` regressor, or via `estimator.fit` on the materialized subset otherwise).
+- Rows to impute are grouped by their pattern of observed features; each pattern gets a model trained on the rows complete for those features (solved from a Gram matrix for the default `FastRidge` regressor, or via `estimator.fit` on the materialized subset otherwise). Per-pattern Gram matrices are assembled in `multivariate/_gram.py` from contributions cached per distinct NaN pattern of the training rows, in float64.
 - `optimask` is a fallback heuristic used when fewer than `min_samples_train` complete rows exist: it searches the pareto front of row/column trade-offs for the largest NaN-free submatrix, preferring rectangles that keep at least `min_samples_train` rows (`min_rows=` parameter) and falling back to the unconstrained maximum-area choice when that is infeasible.
 - Cells whose pattern never reaches `min_samples_train` training rows are filled by the `fallback` strategy (column mean / categorical mode by default, or left NaN with `fallback=None`).
 
@@ -105,3 +105,48 @@ question; keep the supporting scripts in `perf/` (gitignored) and cite them.
   was 12.2% worse geometrically and up to 33.3% worse. Both were also worse across the two full MAR
   scenarios alone. Keep deterministic top-score selection as the single-imputation default; reserve
   randomized selection for an explicit ensemble/diversity use case rather than presumed accuracy.
+
+### 2026-07-26 — Pipeline performance: pattern-Gram reuse and single-pass full-matrix work
+- Measured against v0.3.2 on the same machine (baseline run from a `git worktree` at the previous
+  commit, scenarios and peak working set in a throwaway harness): reference TimeSeriesImputer
+  benchmark 0.99s → 0.21s (4.8x) with peak memory 1181 MB → 764 MB; 25k×25 tabular 2.04s → 0.25s
+  (8.1x); all-columns traffic time series 7.23s → 1.83s (3.9x); wide 10k×250 all-columns
+  270.9s → 23.7s (11.4x); wide 30k×250 all-columns with `n_nearest_features=35` 12.4s → 4.8s (2.6x).
+  NaN-heavy 5k×60 at 25% missing is unchanged (41.5s → 40.1s) because it is dominated by `optimask`,
+  which earlier work established is already near its per-call floor.
+- **The dominant cost was redundant Gram accumulation, not the solves.** A training row whose NaNs
+  sit in columns *N* is valid for *every* pattern excluding a superset of *N*, and the old code
+  re-accumulated it once per such pattern: 2.25M row-outer-products (3.1 GFLOP) where 0.11 GFLOP of
+  distinct information existed. Grouping training rows by exact NaN pattern and caching each group's
+  Gram contribution cut that ~28x. Groups of one row get no cache (nothing to reuse) and a memory
+  budget caps the rest; uncached rows are accumulated on demand, which is what makes the wide
+  all-columns regime (nearly every row has a unique NaN pattern) degrade gracefully.
+- **Finding candidate rows must not scan all rows.** Both the old `extra_rows_excluding` and a first
+  version of the new kernel cost O(n_train) per pattern. Indexing rows and groups by their *lowest*
+  NaN column and enumerating candidates from the pattern's excluded columns makes the cost follow the
+  number of NaNs in those columns. Attributing each candidate to its lowest NaN column is what keeps
+  the enumeration duplicate-free without a visited set.
+- **Gram matrices need float64.** `sxx - outer(sx, sx) / n` cancels most of the Gram's magnitude, so
+  float32 loses several digits on uncentred data. With `normalize=False` the old float32 path deviated
+  from an exact float64 solve by up to 5.9% of a column's standard deviation; the new path is at
+  2.8e-7. This was a real accuracy bug hidden by the fact that the default `normalize=True` centres
+  the data and hides the cancellation.
+- **Over half the original runtime was full-matrix NumPy passes, not modelling.** Only 0.41s of the
+  1.28s benchmark was inside `_impute_col`; scoring (249 ms) and column statistics (207 ms) each made
+  4-6 passes over a 211 MB matrix with 211 MB temporaries. Fusing them into single Numba traversals
+  took them to 16 ms and 25 ms. Two specific traps: `bool_mask.sum(axis=0)` costs 47 ms where
+  `np.count_nonzero(..., axis=0)` and `.all(axis=0)` cost 4 ms; and `pd.DataFrame(arr[:, cols])`
+  spends 34 ms transposing 30 MB into pandas' column-major block, against 14 ms for a cache-blocked
+  transpose handed over as a Fortran-ordered array (identical single-block frame).
+- **Ownership, not extra passes, is what buys memory back.** Writing the standardized matrix and the
+  original-scale output buffer from one read of the input, and rescaling imputed values as they are
+  written, removed two full-matrix passes *and* the final denormalization. Standardizing in place when
+  the caller owns the buffer (the private `_owns_input` flag `TimeSeriesImputer` passes, and any
+  DataFrame input whose encoded matrix the imputer built itself) removed a further full-size array at
+  no time cost — 209 MB of the 764 MB peak.
+- Validation method: elementwise comparison against the pre-change outputs across 18 scenarios
+  (numpy/pandas/mixed-categorical/timeseries/optimask-heavy/custom-regressor/degenerate columns), plus
+  comparison of both old and new against a float64 materialized-ridge reference to establish *which*
+  is closer to the exact answer when they differ. Differences that scale with column σ are the right
+  metric; relative-to-value inflates cells that happen to sit near zero. Top-k nearest-feature
+  selection was verified bit-identical, so score changes never moved which predictors were used.
