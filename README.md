@@ -53,12 +53,14 @@ import numpy as np
 from datafiller import MultivariateImputer
 
 # Create a matrix with missing values
-X = np.array([
-    [1.0, 2.0, 3.0, 4.0],
-    [5.0, np.nan, 7.0, 8.0],
-    [9.0, 10.0, 11.0, np.nan],
-    [13.0, 14.0, 15.0, 16.0],
-])
+X = np.array(
+    [
+        [1.0, 2.0, 3.0, 4.0],
+        [5.0, np.nan, 7.0, 8.0],
+        [9.0, 10.0, 11.0, np.nan],
+        [13.0, 14.0, 15.0, 16.0],
+    ]
+)
 
 # Initialize the imputer and fill the missing values
 imputer = MultivariateImputer()
@@ -80,10 +82,10 @@ import numpy as np
 from datafiller import TimeSeriesImputer
 
 # Create a time series DataFrame with missing values
-rng = pd.date_range('2023-01-01', periods=10, freq='D')
+rng = pd.date_range("2023-01-01", periods=10, freq="D")
 data = {
-    'feature1': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    'feature2': [10, 9, np.nan, 7, 6, 5, np.nan, 3, 2, 1],
+    "feature1": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    "feature2": [10, 9, np.nan, 7, 6, 5, np.nan, 3, 2, 1],
 }
 df = pd.DataFrame(data, index=rng)
 
@@ -133,10 +135,12 @@ from datetime import datetime, timedelta
 import polars as pl
 from datafiller import TimeSeriesImputer
 
-df = pl.DataFrame({
-    "timestamp": [datetime(2024, 1, 1) + timedelta(hours=i) for i in range(24)],
-    "value": [float(i) if i != 12 else None for i in range(24)],
-})
+df = pl.DataFrame(
+    {
+        "timestamp": [datetime(2024, 1, 1) + timedelta(hours=i) for i in range(24)],
+        "value": [float(i) if i != 12 else None for i in range(24)],
+    }
+)
 imputer = TimeSeriesImputer(time_column="timestamp", lags=[1, -1])
 df_imputed = imputer(df)
 ```
