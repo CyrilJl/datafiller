@@ -6,9 +6,10 @@ from pandas.api.types import is_bool_dtype, is_object_dtype, is_string_dtype
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin
 
 from ..exceptions import DataFillerTypeError, DataFillerValueError
+from ..multivariate._numba_utils import all_nan_columns, gather_columns_transposed
 from ..multivariate._polars import is_polars_dataframe, is_polars_lazyframe
 from ..multivariate.imputer import MultivariateImputer
-from ._utils import interpolate_small_gaps
+from ._utils import build_lag_matrix, interpolate_small_gaps
 
 
 class TimeSeriesImputer(BaseEstimator, TransformerMixin):
@@ -169,14 +170,19 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         return self
 
     @staticmethod
-    def _is_categorical_series(series: pd.Series) -> bool:
-        """Whether a column must be imputed with the classifier (same rule as MultivariateImputer)."""
+    def _is_categorical_dtype(dtype) -> bool:
+        """Whether a dtype must be imputed with the classifier (same rule as MultivariateImputer)."""
         return bool(
-            isinstance(series.dtype, pd.CategoricalDtype)
-            or is_object_dtype(series.dtype)
-            or is_string_dtype(series.dtype)
-            or is_bool_dtype(series.dtype)
+            isinstance(dtype, pd.CategoricalDtype)
+            or is_object_dtype(dtype)
+            or is_string_dtype(dtype)
+            or is_bool_dtype(dtype)
         )
+
+    @classmethod
+    def _is_categorical_series(cls, series: pd.Series) -> bool:
+        """Whether a column must be imputed with the classifier (same rule as MultivariateImputer)."""
+        return cls._is_categorical_dtype(series.dtype)
 
     @staticmethod
     def _infer_frequency(index: pd.DatetimeIndex) -> object:
@@ -502,13 +508,14 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
                 if self.time_column in requested_columns:
                     raise DataFillerValueError("The Polars time_column cannot be imputed.")
 
+        dtypes = df.dtypes
         if self.interpolate_gaps_less_than is not None:
             df = df.copy()
             for col in df.columns:
-                if not self._is_categorical_series(df[col]):
+                if not self._is_categorical_dtype(dtypes[col]):
                     df[col] = interpolate_small_gaps(df[col], self.interpolate_gaps_less_than)
 
-        if any(self._is_categorical_series(df[col]) for col in df.columns):
+        if any(self._is_categorical_dtype(dtype) for dtype in dtypes):
             # Polars input cannot reach this branch: _polars_to_pandas enforces numeric columns.
             return self._impute_frame_with_categoricals(
                 df,
@@ -539,28 +546,18 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             assert isinstance(df.index, pd.DatetimeIndex)
             time_features = self._make_time_features(df.index, reserved_names=feature_names)
             feature_names.extend(time_features.columns)
+            time_values = time_features.to_numpy(dtype=values.dtype)
         else:
-            time_features = None
+            time_values = np.empty((len(df), 0), dtype=values.dtype)
 
-        matrix = np.empty((len(df), len(feature_names)), dtype=values.dtype)
-        matrix[:, :n_original_cols] = values
-        for i, lag in enumerate(lags):
-            start = n_original_cols * (i + 1)
-            block = matrix[:, start : start + n_original_cols]
-            n_kept_rows = max(0, len(df) - abs(lag))
-            if lag > 0:
-                block[: len(df) - n_kept_rows] = np.nan
-                block[len(df) - n_kept_rows :] = values[:n_kept_rows]
-            else:
-                block[:n_kept_rows] = values[len(df) - n_kept_rows :]
-                block[n_kept_rows:] = np.nan
-        if time_features is not None:
-            matrix[:, len(feature_names) - time_features.shape[1] :] = time_features.to_numpy(dtype=values.dtype)
+        matrix = build_lag_matrix(values, np.asarray(lags, dtype=np.int64), time_values)
 
-        # Equivalent of dropna(how="all", axis=1) on the feature frame.
-        all_nan_cols = np.isnan(matrix).all(axis=0)
-        if all_nan_cols.any():
-            keep = ~all_nan_cols
+        # Equivalent of dropna(how="all", axis=1) on the generated features. The
+        # original columns are always kept so the output layout matches the input,
+        # as in the categorical path.
+        keep = ~all_nan_columns(matrix)
+        keep[:n_original_cols] = True
+        if not keep.all():
             matrix = np.ascontiguousarray(matrix[:, keep])
             feature_names = [name for name, keep_col in zip(feature_names, keep, strict=True) if keep_col]
         feature_index = pd.Index(feature_names)
@@ -603,6 +600,9 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             rows_to_impute=rows_to_impute,
             cols_to_impute=cols_to_impute_indices,
             n_nearest_features=n_nearest_features,
+            # `matrix` was built above and is not read again, so the imputer may
+            # standardize it in place instead of copying it.
+            _owns_input=True,
         )
         self.imputation_features_ = self.multivariate_imputer.imputation_features_
 
@@ -617,7 +617,8 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         if feature_index.is_unique:
             positions = feature_index.get_indexer(original_cols)
             if (positions >= 0).all():
-                result = pd.DataFrame(imputed_data[:, positions], index=df.index, columns=original_cols)
+                columns_out = gather_columns_transposed(imputed_data, positions.astype(np.int64)).T
+                result = pd.DataFrame(columns_out, index=df.index, columns=original_cols)
                 if is_polars_df:
                     assert polars_metadata is not None
                     return self._pandas_to_polars(result, polars_metadata)

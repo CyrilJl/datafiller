@@ -203,3 +203,44 @@ def test_timeseries_imputer_n_nearest_features_tracking(nan_df):
         assert col not in features
         # Check that generated temporal context features are present.
         assert any(("_lag_" in f) or f.startswith("__time_") for f in features)
+
+
+def test_timeseries_imputer_keeps_fully_missing_original_column():
+    """A column with no observed value must survive to the output layout.
+
+    Generated lag/lead features that are entirely NaN are dropped, but dropping
+    an original column would leave the result missing it entirely.
+    """
+    index = pd.date_range("2021-01-01", periods=60, freq="h")
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame(
+        {
+            "a": rng.normal(size=60),
+            "b": rng.normal(size=60),
+            "dead": np.full(60, np.nan),
+        },
+        index=index,
+    )
+    df.loc[df.index[10:15], "a"] = np.nan
+
+    imputed = TimeSeriesImputer(lags=(1, -1), rng=0)(df)
+
+    assert list(imputed.columns) == ["a", "b", "dead"]
+    assert not imputed["a"].isna().any()
+    assert imputed["dead"].isna().all()
+
+
+def test_timeseries_imputer_lag_matrix_matches_shifted_frames():
+    """The preallocated lag matrix must match a concat of shifted frames."""
+    from datafiller.timeseries._utils import build_lag_matrix
+
+    index = pd.date_range("2020-01-01", periods=12, freq="D")
+    rng = np.random.default_rng(1)
+    df = pd.DataFrame(rng.normal(size=(12, 3)), index=index, columns=["a", "b", "c"])
+    lags = [1, 3, -2]
+
+    values = df.to_numpy()
+    actual = build_lag_matrix(values, np.asarray(lags, dtype=np.int64), np.zeros((12, 0)))
+    expected = pd.concat([df] + [df.shift(lag) for lag in lags], axis=1).to_numpy()
+
+    np.testing.assert_allclose(actual, expected)

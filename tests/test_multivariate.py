@@ -7,6 +7,7 @@ from sklearn.tree import DecisionTreeClassifier
 import datafiller.multivariate.imputer as multivariate_imputer_module
 from datafiller.datasets import load_titanic
 from datafiller.estimators.ridge import FastRidge
+from datafiller.exceptions import DataFillerValueError
 from datafiller.multivariate import MultivariateImputer
 from datafiller.multivariate._numba_utils import (
     complete_rows_excluding,
@@ -451,3 +452,145 @@ def test_multivariate_imputer_falls_back_to_optimask_when_complete_cases_are_ins
 
     assert optimask_calls >= 1
     assert not np.isnan(imputed[5, 0])
+
+
+def _float64_reference_imputation(x: np.ndarray, **kwargs) -> np.ndarray:
+    """Impute through a float64 materialized ridge, bypassing the Gram fast path."""
+
+    class Float64Ridge(FastRidge):
+        def fit(self, X, y):
+            X = np.asarray(X, dtype=np.float64)
+            y = np.asarray(y, dtype=np.float64)
+            n = X.shape[0]
+            if self.fit_intercept:
+                x_mean, y_mean = X.mean(axis=0), y.mean()
+                A = X.T @ X - n * np.outer(x_mean, x_mean)
+                b = X.T @ y - n * x_mean * y_mean
+            else:
+                x_mean, y_mean = None, 0.0
+                A, b = X.T @ X, X.T @ y
+            A.flat[:: A.shape[0] + 1] += self.alpha
+            self.coef_ = np.linalg.solve(A, b)
+            self.intercept_ = (y_mean - x_mean @ self.coef_) if self.fit_intercept else 0.0
+            return self
+
+        def predict(self, X):
+            return np.asarray(X, dtype=np.float64) @ self.coef_ + self.intercept_
+
+    return MultivariateImputer(regressor=Float64Ridge(), rng=0)(x.astype(np.float64), **kwargs)
+
+
+@pytest.mark.parametrize("normalize", [True, False])
+def test_gram_cache_matches_high_precision_reference(normalize):
+    """The cached per-pattern Grams must reproduce an exact float64 solve.
+
+    Uses an off-centre, wide-scaled matrix: that is where accumulating the Gram
+    of `[X, y, 1]` is least forgiving, because the intercept correction cancels
+    most of its magnitude.
+    """
+    rng = np.random.default_rng(4)
+    latent = rng.normal(size=(800, 5)).astype(np.float32)
+    x = (latent @ rng.normal(size=(5, 14)).astype(np.float32)) * 5.0 + 120.0
+    x[rng.random(x.shape) < 0.15] = np.nan
+
+    actual = MultivariateImputer(rng=0)(x, normalize=normalize)
+    expected = _float64_reference_imputation(x, normalize=normalize)
+
+    np.testing.assert_array_equal(np.isnan(actual), np.isnan(expected))
+    spread = np.nanstd(expected, axis=0)
+    np.testing.assert_array_less(np.nan_to_num(np.abs(actual - expected) / spread), 1e-4)
+
+
+def test_gram_path_handles_patterns_beyond_the_cache_budget(monkeypatch):
+    """Rows whose NaN pattern is not cached are accumulated directly, with the same result."""
+    import datafiller.multivariate._gram as gram_module
+
+    rng = np.random.default_rng(9)
+    latent = rng.normal(size=(600, 4)).astype(np.float32)
+    x = latent @ rng.normal(size=(4, 12)).astype(np.float32)
+    x[rng.random(x.shape) < 0.2] = np.nan
+
+    reference = MultivariateImputer(rng=0)(x)
+    # A budget of one byte leaves room for no cached group at all, so every row
+    # with NaNs takes the on-demand path.
+    monkeypatch.setattr(gram_module, "_GRAM_CACHE_BUDGET_BYTES", 1)
+    uncached = MultivariateImputer(rng=0)(x)
+
+    np.testing.assert_allclose(uncached, reference, rtol=1e-5, atol=1e-6)
+
+
+def test_normalization_leaves_observed_values_untouched():
+    """Standardizing must not round-trip the cells that were already observed."""
+    rng = np.random.default_rng(2)
+    x = (rng.normal(size=(300, 6)) * 1000.0 + 50_000.0).astype(np.float32)
+    x[rng.random(x.shape) < 0.1] = np.nan
+    observed = ~np.isnan(x)
+
+    imputed = MultivariateImputer(rng=0)(x)
+
+    np.testing.assert_array_equal(imputed[observed], x[observed])
+
+
+def test_scoring_column_means_shortcut_matches_recomputation():
+    """Passing known column means must not change the scores."""
+    rng = np.random.default_rng(6)
+    x = (rng.normal(size=(400, 9)) * 3 + 7).astype(np.float32)
+    x[rng.random(x.shape) < 0.2] = np.nan
+    cols = np.array([1, 4, 8])
+
+    with np.errstate(all="ignore"):
+        means = np.nanmean(x, axis=0)
+    np.testing.assert_allclose(scoring(x, cols, column_means=means), scoring(x, cols), rtol=1e-5, atol=1e-8)
+
+
+def test_scoring_chunked_fallback_matches_fused_kernel(monkeypatch):
+    """The row-chunked path used for many targets agrees with the fused kernel."""
+    import datafiller.multivariate._scoring as scoring_module
+
+    rng = np.random.default_rng(8)
+    x = (rng.normal(size=(350, 11)) * 2 - 4).astype(np.float32)
+    x[rng.random(x.shape) < 0.18] = np.nan
+    cols = np.arange(11)
+
+    fused = scoring(x, cols)
+    monkeypatch.setattr(scoring_module, "_MAX_FUSED_TARGETS", 0)
+    monkeypatch.setattr(scoring_module, "_CHUNK_ROWS", 64)
+    chunked = scoring(x, cols)
+
+    np.testing.assert_array_equal(np.isnan(fused), np.isnan(chunked))
+    np.testing.assert_allclose(np.nan_to_num(fused), np.nan_to_num(chunked), rtol=1e-4, atol=1e-6)
+
+
+def test_column_nan_stats_matches_numpy():
+    rng = np.random.default_rng(12)
+    x = (rng.normal(size=(200, 7)) * 4 + 3).astype(np.float32)
+    x[rng.random(x.shape) < 0.25] = np.nan
+
+    mask_nan, counts, sums, has_inf = MultivariateImputer._column_nan_stats(x)
+
+    np.testing.assert_array_equal(mask_nan, np.isnan(x))
+    np.testing.assert_array_equal(counts, np.count_nonzero(~np.isnan(x), axis=0))
+    np.testing.assert_allclose(sums, np.nansum(x, axis=0), rtol=1e-6)
+    assert not has_inf
+
+
+def test_column_nan_stats_detects_infinity_and_call_rejects_it():
+    x = np.array([[1.0, 2.0], [3.0, np.inf]])
+    assert MultivariateImputer._column_nan_stats(x)[3]
+    with pytest.raises(DataFillerValueError, match="infinity"):
+        MultivariateImputer()(x)
+
+
+def test_standardization_leaves_unselected_columns_alone():
+    rng = np.random.default_rng(13)
+    x = (rng.normal(size=(150, 5)) * 6 + 20).astype(np.float32)
+    x[rng.random(x.shape) < 0.1] = np.nan
+    _, counts, sums, _ = MultivariateImputer._column_nan_stats(x)
+
+    means, scales = MultivariateImputer._standardization(x, counts, sums, np.array([0, 3]))
+
+    np.testing.assert_array_equal(means[[1, 2, 4]], 0.0)
+    np.testing.assert_array_equal(scales[[1, 2, 4]], 1.0)
+    with np.errstate(all="ignore"):
+        np.testing.assert_allclose(means[[0, 3]], np.nanmean(x, axis=0)[[0, 3]], rtol=1e-6)
+        np.testing.assert_allclose(scales[[0, 3]], np.nanstd(x, axis=0)[[0, 3]], rtol=1e-6)
