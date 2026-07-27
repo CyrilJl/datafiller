@@ -1,8 +1,8 @@
 Changelog
 =========
 
-Unreleased
-----------
+v0.3.3 (2026-07-27)
+-------------------
 
 - Large speedup of the imputation pipeline, with lower peak memory and unchanged imputation quality. Measured against the previous release on the same machine: 4.8x on the reference ``TimeSeriesImputer`` benchmark (30,000x250, 3 targets, ``n_nearest_features=35``) with peak memory down 35%; 8.1x on a 25,000x25 tabular matrix; 3.9x on an all-columns traffic time series; 2.6x and 11.4x on wide all-column imputation with and without ``n_nearest_features``. The main changes:
 
