@@ -311,7 +311,9 @@ def test_timeseries_imputer_iterable_lags_match_release_outputs():
     imputer = TimeSeriesImputer(lags=(1, 2, -1), rng=0)
     out = imputer(df)
 
-    np.testing.assert_allclose(out.to_numpy()[mask], golden, rtol=1e-5, atol=1e-6)
+    # Part of the pipeline runs in float32: CI platforms differ by up to 1.4e-6 (columns have a std of ~1);
+    # a wrong lag layout moves values by ~1.
+    np.testing.assert_allclose(out.to_numpy()[mask], golden, rtol=0, atol=1e-5)
     lagged = [f"{col}_lag_{lag}" for lag in (1, 2, -1) for col in "abc"]
     assert imputer.feature_names_[:12] == ["a", "b", "c", *lagged]
 
