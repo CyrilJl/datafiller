@@ -184,3 +184,17 @@ question; keep the supporting scripts in `perf/` (gitignored) and cite them.
   targets on the same data: 0.12 s, 425 MB. Evidence: `perf/lags_tsi_benchmark.py`.
 - Name construction trap: `f"{index[j]}_..."` over 1,500 pairs costs ~1 ms through
   `pd.Index.__getitem__`, against ~0.2 ms on a plain list.
+
+### 2026-10-11 — Precision and selection invariants from the health audit
+- Evidence: `perf/health_audit.py` and regression tests in `tests/test_estimators.py`,
+  `tests/test_multivariate.py`, and the pandas/Polars time-series suites.
+- With uncentred predictors around 10,000 and `normalize=False`, the materialized ridge after
+  `optimask` predicted -11,424 where a float64 reference predicted -1.417633. Centre before
+  forming the normal equations in float64; preserve the input dtype in the augmented gather.
+  Both paths now give -1.417633 on the reproduction.
+- Float32 feature encoding cannot preserve observed DataFrame values: integers 16,777,217 and
+  16,777,219 became 16,777,216 and 16,777,220. Keep original observations in the output and write
+  only predictions into missing cells; integer time-series outputs need the same protection.
+- Resolve selectors against the original columns and the regularized time grid once, before
+  interpolation and feature expansion. Shared validation prevents numeric/categorical paths
+  from disagreeing on generated-name collisions, timestamps, and out-of-range positions.

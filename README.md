@@ -175,6 +175,8 @@ For each pattern, the training data is selected along a three-step path:
 2. **optimask** — otherwise, the [optimask](https://github.com/CyrilJl/OptiMask) algorithm finds the largest complete rectangular subset of the data, trading some feature columns for more training rows, and prefers rectangles that keep at least `min_samples_train` rows.
 3. **Fallback** — the rare cells that still cannot get a model are filled with the column mean (most frequent category for categoricals) by default; pass `fallback=None` to leave them as NaN instead.
 
-This ensures each model is trained on the highest-quality data available while still guaranteeing a fully imputed output.
+With the default fallback, all selected missing cells are filled when their column has at least one observed value. Entirely missing columns remain missing.
+
+Both imputers expose `fit` and `transform` for scikit-learn pipelines. `fit` is a no-op: each `transform` trains models on the data passed to that call, rather than retaining models from a separate training dataset.
 
 For more details, see the [documentation](https://datafiller.readthedocs.io/).

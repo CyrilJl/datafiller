@@ -92,11 +92,11 @@ class ExtremeLearningMachine:
         Fits the ELM model.
 
         Args:
-            X (np.ndarray): The training data.
-            y (np.ndarray): The target values.
+            X (numpy.ndarray): The training data.
+            y (numpy.ndarray): The target values.
 
         Returns:
-            self: The fitted estimator.
+            ExtremeLearningMachine: The fitted estimator.
         """
         X = np.ascontiguousarray(X, dtype=np.float32)
         n_samples = X.shape[0]
@@ -123,7 +123,8 @@ class ExtremeLearningMachine:
             z = buffer[: stop - start]
             self._project(X[start:stop], W, bias, out=z[:, :k])
             z[:, k] = y[start:stop]
-            gram += z.T @ z
+            block = z.astype(np.float64)
+            gram += block.T @ block
         coef, intercept = fit_ridge_from_gram(
             gram=gram,
             n_samples=n_samples,
@@ -139,10 +140,10 @@ class ExtremeLearningMachine:
         Makes predictions using the fitted model.
 
         Args:
-            X (np.ndarray): The data to predict on.
+            X (numpy.ndarray): The data to predict on.
 
         Returns:
-            np.ndarray: The predicted values.
+            numpy.ndarray: The predicted values.
         """
         X = np.ascontiguousarray(X, dtype=np.float32)
         n_samples = X.shape[0]
@@ -189,7 +190,7 @@ class ExtremeLearningMachine:
             **params: Estimator parameters.
 
         Returns:
-            self: Estimator instance.
+            ExtremeLearningMachine: Estimator instance.
         """
         for param, value in params.items():
             setattr(self, param, value)

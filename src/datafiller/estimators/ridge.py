@@ -1,5 +1,7 @@
 import numpy as np
 
+from ..exceptions import DataFillerValueError
+
 
 def fit_ridge_from_gram(
     gram: np.ndarray,
@@ -48,6 +50,10 @@ class FastRidge:
     scikit-learn estimator but provides the necessary `fit` and `predict`
     methods for use within the DataFiller.
 
+    Fits and predictions use float64. With an intercept, training data is
+    centred before forming the normal equations to avoid cancellation on
+    strongly offset features.
+
     Args:
         alpha (float): The regularization strength. Defaults to 0.01.
         fit_intercept (bool): Whether to calculate the intercept for this model.
@@ -66,27 +72,28 @@ class FastRidge:
         Fits the Ridge regression model.
 
         Args:
-            X (np.ndarray): The training data.
-            y (np.ndarray): The target values.
+            X (numpy.ndarray): The training data.
+            y (numpy.ndarray): The target values.
 
         Returns:
-            self: The fitted regressor.
+            FastRidge: The fitted regressor.
         """
-        X = np.asarray(X, dtype=np.float32)
-        y = np.asarray(y, dtype=np.float32)
-        n_samples = X.shape[0]
-        Xt = X.T
+        X = np.asarray(X, dtype=np.float64)
+        y = np.asarray(y, dtype=np.float64)
 
         if self.fit_intercept:
             X_mean = X.mean(axis=0)
             y_mean = y.mean()
-            A = Xt @ X - np.float32(n_samples) * np.outer(X_mean, X_mean)
-            b = Xt @ y - np.float32(n_samples) * X_mean * y_mean
+            # Centre before multiplying: subtracting two large raw moments
+            # loses precision even in float64 for strongly offset data.
+            X = X - X_mean
+            y = y - y_mean
         else:
             X_mean = None
-            y_mean = np.float32(0.0)
-            A = Xt @ X
-            b = Xt @ y
+            y_mean = 0.0
+
+        A = X.T @ X
+        b = X.T @ y
 
         A.flat[:: A.shape[0] + 1] += self.alpha
         self.coef_ = np.linalg.solve(A, b)
@@ -102,10 +109,12 @@ class FastRidge:
         Makes predictions using the fitted model.
 
         Args:
-            X (np.ndarray): The data to predict on.
+            X (numpy.ndarray): The data to predict on.
 
         Returns:
-            np.ndarray: The predicted values.
+            numpy.ndarray: The predicted values.
         """
-        X = np.asarray(X, dtype=np.float32)
+        if self.coef_ is None:
+            raise DataFillerValueError("FastRidge must be fitted before prediction.")
+        X = np.asarray(X, dtype=np.float64)
         return X @ self.coef_ + self.intercept_

@@ -6,6 +6,24 @@ from datafiller import MultivariateImputer
 pl = pytest.importorskip("polars")
 
 
+def test_polars_observed_values_survive_float32_encoding():
+    df = pl.DataFrame(
+        {
+            "integer": [16777217, None, 16777219],
+            "unsigned": pl.Series([2**63 + 1, 2**63 + 3, 2**63 + 5], dtype=pl.UInt64),
+            "float": [1.234567890123, np.nan, 3.456789012345],
+        }
+    )
+    actual = MultivariateImputer()(df, rows_to_impute=[1], cols_to_impute=["integer", "float"])
+    assert actual.schema == df.schema
+    assert actual["unsigned"].to_list() == df["unsigned"].to_list()
+    for column in ["integer", "float"]:
+        assert actual[column][0] == df[column][0]
+        assert actual[column][2] == df[column][2]
+    assert actual["integer"][1] is not None
+    assert np.isfinite(actual["float"][1])
+
+
 def test_multivariate_imputer_polars_mixed_schema_round_trip():
     df = pl.DataFrame(
         {

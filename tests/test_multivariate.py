@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.base import clone
 from sklearn.linear_model import Ridge
 from sklearn.tree import DecisionTreeClassifier
 
@@ -15,6 +16,83 @@ from datafiller.multivariate._numba_utils import (
     nan_positions,
 )
 from datafiller.multivariate._scoring import scoring
+from datafiller.timeseries import TimeSeriesImputer
+
+
+def test_optimask_ridge_stable_without_normalization():
+    rng = np.random.default_rng(0)
+    X = 10000 + rng.normal(size=(100, 2))
+    y = 3 * (X[:, 0] - 10000)
+    data = np.column_stack([X, y])
+    data[10:99, 1] = np.nan
+    data[99, 2] = np.nan
+    actual = MultivariateImputer()(data, cols_to_impute=[2], normalize=False)
+    expected = Ridge(alpha=0.01).fit(X[:99, :1], y[:99]).predict(X[99:, :1])
+    np.testing.assert_allclose(actual[99, 2], expected[0], atol=1e-8)
+
+
+def test_clone_preserves_default_classifier_seed_updates_and_fresh_state():
+    imputer = MultivariateImputer(rng=1)
+    imputer.imputation_features_ = {0: [1]}
+    cloned = clone(imputer).set_params(rng=7)
+    assert cloned.classifier.random_state == 7
+    assert cloned.imputation_features_ is None
+    assert imputer.classifier.random_state == 1
+    custom = MultivariateImputer(classifier=DecisionTreeClassifier(random_state=2), rng=1)
+    assert clone(custom).set_params(rng=7).classifier.random_state == 2
+
+
+@pytest.mark.parametrize("imputer_class", [MultivariateImputer, TimeSeriesImputer])
+def test_invalid_scoring_update_is_rejected_without_changing_configuration(imputer_class):
+    imputer = imputer_class()
+    with pytest.raises(DataFillerValueError, match="scoring"):
+        imputer.set_params(scoring="bad")
+    assert imputer.scoring == "default"
+
+
+@pytest.mark.parametrize("threshold", [0, -1, True, 1.5, "20"])
+@pytest.mark.parametrize("imputer_class", [MultivariateImputer, TimeSeriesImputer])
+def test_invalid_training_threshold_rejected(threshold, imputer_class):
+    with pytest.raises(DataFillerValueError, match="positive integer"):
+        imputer_class(min_samples_train=threshold)
+    imputer = imputer_class()
+    original_threshold = imputer.min_samples_train
+    with pytest.raises(DataFillerValueError, match="positive integer"):
+        imputer.set_params(min_samples_train=threshold)
+    assert imputer.min_samples_train == original_threshold
+
+
+def test_pandas_observed_values_survive_float32_encoding():
+    df = pd.DataFrame(
+        {
+            "integer": pd.Series([16777217, None, 16777219], dtype="Int64"),
+            "unsigned": pd.Series([2**63 + 1, 2**63 + 3, 2**63 + 5], dtype="uint64"),
+            "float": [1.234567890123, np.nan, 3.456789012345],
+        }
+    )
+    expected = df.copy(deep=True)
+    actual = MultivariateImputer()(df, rows_to_impute=[1], cols_to_impute=["integer", "float"])
+    for column in df.columns:
+        observed = df[column].notna()
+        pd.testing.assert_series_equal(actual.loc[observed, column], df.loc[observed, column])
+    assert actual.loc[1, ["integer", "float"]].notna().all()
+    pd.testing.assert_frame_equal(df, expected)
+
+
+def test_pandas_categorical_labels_and_schema_are_preserved():
+    df = pd.DataFrame(
+        {
+            "object": pd.Series([1, None, 1], dtype=object),
+            "string": pd.Series(["a", None, "a"], dtype="string"),
+            "category": pd.Categorical(["a", None, "a"], categories=["a", "b"], ordered=True),
+            "boolean": pd.Series([True, None, True], dtype="boolean"),
+        }
+    )
+    actual = MultivariateImputer()(df)
+    pd.testing.assert_series_equal(actual.dtypes, df.dtypes)
+    pd.testing.assert_frame_equal(actual.iloc[[0, 2]], df.iloc[[0, 2]])
+    assert actual.loc[1, "object"] == 1
+    assert actual.notna().all().all()
 
 
 def _reference_complete_rows(mask_nan: np.ndarray, usable_cols: np.ndarray) -> np.ndarray:

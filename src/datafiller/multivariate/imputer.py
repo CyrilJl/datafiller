@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_bool_dtype, is_float_dtype, is_integer_dtype, is_object_dtype, is_string_dtype
-from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin
+from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin, clone
 from sklearn.tree import DecisionTreeClassifier
 from tqdm.auto import tqdm
 
@@ -75,6 +75,10 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
     one-hot encoded internally and imputed with a classifier before returning
     the original column layout.
 
+    ``fit`` is a no-op: each call to ``transform`` trains models on the data
+    passed to that call. Models are not retained from a training dataset for
+    imputing a separate test dataset.
+
     Rows to impute are grouped by their pattern of observed features, and the
     training data for each pattern is selected along a fixed three-step path:
 
@@ -89,14 +93,14 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
        category by default, or left NaN with ``fallback=None``).
 
     Args:
-        regressor (RegressorMixin, optional): A scikit-learn compatible
+        regressor (RegressorMixin): A scikit-learn compatible
             regressor. It should be a lightweight model, as it is fitted many
             times. By default, a custom Ridge implementation is used.
-        classifier (ClassifierMixin, optional): A scikit-learn compatible
+        classifier (ClassifierMixin): A scikit-learn compatible
             classifier used for categorical and string targets. Defaults to
             ``DecisionTreeClassifier(max_depth=4, random_state=rng)``.
-        verbose (int, optional): The verbosity level. Defaults to 0.
-        min_samples_train (int, optional): The minimum number of samples
+        verbose (int): The verbosity level. Defaults to 0.
+        min_samples_train (int): The minimum number of samples
             required to train a model. Patterns with fewer complete rows fall
             back to an `optimask` search that trades feature columns for
             training rows; cells whose patterns still cannot reach the
@@ -105,15 +109,15 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             values of 10-20 consistently beat permissive ones (fits on fewer
             samples are often worse than a plain column mean once missingness
             reaches ~25%).
-        fallback (str or None, optional): What to do with cells no model
+        fallback (str or None): What to do with cells no model
             could impute (their pattern never reached `min_samples_train`
             training rows). ``"simple"`` (default) fills them with the column
             mean (most frequent category for categorical columns). ``None``
             leaves them as NaN.
-        rng (int, optional): A seed for the random number generator. This is
+        rng (int): A seed for the random number generator. This is
             used by the default categorical classifier when one is not
             provided. Defaults to None.
-        scoring (str or callable, optional): The scoring function to use for
+        scoring (str or Callable): The scoring function to use for
             feature selection.
             If 'default', the default scoring function is used.
             If a callable, it must take two arguments as input: the data matrix
@@ -122,7 +126,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             `(n_cols_to_impute,)`), and return a score matrix of shape
             `(n_cols_to_impute, n_features)`.
             Defaults to 'default'.
-        device (str, optional): Device used to solve the default ridge
+        device (str): Device used to solve the default ridge
             models, e.g. ``"cuda"`` or ``"cuda:0"``. Requires the optional
             PyTorch dependency (``pip install datafiller[gpu]``). All
             missingness patterns of a column are then solved as batched
@@ -165,7 +169,19 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
 
     @classmethod
     def _resolve_min_samples_train(cls, min_samples_train: int | None) -> int:
-        return cls._DEFAULT_MIN_SAMPLES_TRAIN if min_samples_train is None else min_samples_train
+        if min_samples_train is None:
+            return cls._DEFAULT_MIN_SAMPLES_TRAIN
+        if isinstance(min_samples_train, (bool, np.bool_)) or not isinstance(min_samples_train, (int, np.integer)):
+            raise DataFillerValueError("min_samples_train must be a positive integer or None.")
+        if min_samples_train < 1:
+            raise DataFillerValueError("min_samples_train must be a positive integer or None.")
+        return min_samples_train
+
+    @staticmethod
+    def _validate_scoring(scoring):
+        if not callable(scoring) and not (isinstance(scoring, str) and scoring == "default"):
+            raise DataFillerValueError("`scoring` must be 'default' or a callable.")
+        return scoring
 
     @staticmethod
     def _validate_fallback(fallback: str | None) -> str | None:
@@ -194,22 +210,28 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 mean (mode for categoricals); ``None`` leaves them as NaN.
             device: Optional torch device (e.g. ``"cuda"``) for batched ridge solves.
         """
-        self._regressor_default = regressor is None
         # Regressors and classifiers are sklearn-compatible duck types; the
         # mixin base classes do not declare fit/predict, hence Any.
-        self.regressor: Any = regressor or FastRidge()
+        self.regressor: Any = FastRidge() if regressor is None else regressor
         self.verbose = int(verbose)
         self.min_samples_train = self._resolve_min_samples_train(min_samples_train)
         self.fallback = self._validate_fallback(fallback)
         self.rng = rng
         self._classifier_default = classifier is None
-        self.classifier: Any = classifier or DecisionTreeClassifier(max_depth=4, random_state=rng)
-        if scoring != "default" and not callable(scoring):
-            raise DataFillerValueError("`scoring` must be 'default' or a callable.")
-        self.scoring: str | Callable[..., np.ndarray] = scoring
+        self.classifier: Any = (
+            DecisionTreeClassifier(max_depth=4, random_state=rng) if classifier is None else classifier
+        )
+        self.scoring: str | Callable[..., np.ndarray] = self._validate_scoring(scoring)
         self.device = device
         self._gpu_backend: GramBackend | None = None
         self.imputation_features_: dict | None = None
+
+    def __sklearn_clone__(self):
+        """Clone configuration while retaining ownership of the default classifier."""
+        params = {name: clone(value, safe=False) for name, value in self.get_params(deep=False).items()}
+        cloned = type(self)(**params)
+        cloned._classifier_default = self._classifier_default
+        return cloned
 
     def fit(self, X, y: None = None) -> "MultivariateImputer":
         """No-op fit for sklearn compatibility."""
@@ -226,6 +248,8 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             params["min_samples_train"] = self._resolve_min_samples_train(params["min_samples_train"])
         if "fallback" in params:
             params["fallback"] = self._validate_fallback(params["fallback"])
+        if "scoring" in params:
+            params["scoring"] = self._validate_scoring(params["scoring"])
 
         classifier_param = params.get("classifier", None) if "classifier" in params else None
         regressor_param = params.get("regressor", None) if "regressor" in params else None
@@ -239,8 +263,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 self.classifier = DecisionTreeClassifier(max_depth=4, random_state=self.rng)
 
         if "regressor" in params:
-            self._regressor_default = regressor_param is None
-            if self._regressor_default:
+            if regressor_param is None:
                 self.regressor = FastRidge()
 
         if rng_changed:
@@ -349,8 +372,6 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 return rounded.astype(dtype)
             except (TypeError, ValueError):
                 return rounded.astype(pd.Int64Dtype())
-        if is_float_dtype(dtype):
-            return series.astype(dtype)
         return series.astype(dtype)
 
     def _decode_dataframe(
@@ -361,41 +382,26 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         main_column_indices: np.ndarray,
         categorical_targets: dict[int, list],
         original_dtypes: dict,
+        original_frame: pd.DataFrame,
     ) -> pd.DataFrame:
         """Decode an imputed numeric matrix back to the original DataFrame layout."""
         data = {}
         for i, col in enumerate(original_columns):
             encoded_idx = main_column_indices[i]
             col_data = x_imputed[:, encoded_idx]
-
-            if encoded_idx in categorical_targets:
-                categories = categorical_targets[encoded_idx]
-                mask = np.isnan(col_data)
-                decoded = np.full(len(col_data), np.nan, dtype=object)
-                if len(categories) and np.any(~mask):
-                    category_values = np.array(categories, dtype=object)
-                    decoded[~mask] = category_values[col_data[~mask].astype(np.int64)]
-
-                dtype = original_dtypes[col]
-                if is_bool_dtype(dtype):
-                    series = pd.Series(decoded, index=original_index, dtype="boolean")
-                elif isinstance(dtype, pd.CategoricalDtype):
-                    dtype_categories = getattr(dtype, "categories", None)
-                    series = pd.Series(
-                        pd.Categorical(
-                            decoded,
-                            categories=dtype_categories if dtype_categories is not None else categories,
-                            ordered=getattr(dtype, "ordered", False),
-                        ),
-                        index=original_index,
+            # Only write predictions into originally missing cells. Observed
+            # values may not round-trip through the float32 model matrix.
+            series = original_frame[col].copy()
+            filled = series.isna().to_numpy() & ~np.isnan(col_data)
+            if filled.any():
+                if encoded_idx in categorical_targets:
+                    category_values = np.array(categorical_targets[encoded_idx], dtype=object)
+                    predictions = pd.Series(
+                        category_values[col_data[filled].astype(np.int64)], dtype=original_dtypes[col]
                     )
-                elif is_string_dtype(dtype):
-                    series = pd.Series(decoded, index=original_index, dtype="string")
                 else:
-                    series = pd.Series(decoded, index=original_index)
-            else:
-                series = pd.Series(col_data, index=original_index)
-                series = self._cast_series_to_dtype(series, original_dtypes[col])
+                    predictions = self._cast_series_to_dtype(pd.Series(col_data[filled]), original_dtypes[col])
+                series.iloc[np.flatnonzero(filled)] = predictions.to_numpy()
 
             data[col] = series
 
@@ -566,7 +572,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             nan_col_offsets, nan_col_rows = nan_cols_csc(local_iy, local_ix, width)
             groups = build_row_groups(augmented_mask_nan, k_local, row_nan_count > 0, first_nan_column, width)
             cached_grams = group_grams(z_aug, groups.rows, groups.offsets, width)
-            n_samples, solved = solve_patterns(
+            solved = solve_patterns(
                 z_aug,
                 gram_complete,
                 len(complete_rows),
@@ -617,7 +623,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                     row_nan_count, col_ptr, col_rows, excluded_cols_local, hits, stamp, epoch
                 )
                 if len(rows) >= self.min_samples_train:
-                    key = (False, rows.tobytes(), usable_cols_local.tobytes())
+                    key = (rows.tobytes(), usable_cols_local.tobytes())
                     if key not in training_groups:
                         training_groups[key] = {"rows": rows, "cols": usable_cols_local, "prediction_groups": []}
                     training_groups[key]["prediction_groups"].append(prediction_group)
@@ -637,7 +643,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
             if (len(rows) < self.min_samples_train) or (not len(cols)):
                 continue  # Not enough data to train a model
 
-            key = (False, rows.tobytes(), cols.tobytes())
+            key = (rows.tobytes(), cols.tobytes())
             if key not in training_groups:
                 training_groups[key] = {"rows": rows, "cols": cols, "prediction_groups": []}
             training_groups[key]["prediction_groups"].append(prediction_group)
@@ -833,6 +839,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
         polars_metadata = None
 
         if is_pandas_df:
+            original_frame = x
             original_index = x.index
             original_columns = x.columns
             rows_to_impute = _dataframe_rows_to_impute_to_indices(rows_to_impute, original_index)
@@ -981,6 +988,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 main_column_indices=main_column_indices,
                 categorical_targets=categorical_targets,
                 original_dtypes=original_dtypes,
+                original_frame=original_frame,
             )
         if is_polars_df:
             assert polars_metadata is not None

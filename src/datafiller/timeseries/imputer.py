@@ -1,9 +1,10 @@
 from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping
 from datetime import timedelta
+from typing import Any
 
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_bool_dtype, is_object_dtype, is_string_dtype
+from pandas.api.types import is_bool_dtype, is_integer_dtype, is_numeric_dtype, is_object_dtype, is_string_dtype
 from pandas.tseries.frequencies import to_offset
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin
 
@@ -84,8 +85,11 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
     configured classifier, and their lagged/lead copies are used as features
     like any other column. Polars input remains numeric-only.
 
+    ``fit`` is a no-op. Each ``transform`` call trains its models on the time
+    series passed to that call; no models are retained between datasets.
+
     Args:
-        lags (Iterable or Mapping, optional): The lags and leads to create as
+        lags (Iterable or Mapping): The lags and leads to create as
             autoregressive features. Positive values create lags (e.g., `t-1`),
             negative values create leads (e.g., `t+1`). Each lag is an integer
             number of steps or a duration (a string such as ``"24h"``, or a
@@ -96,38 +100,39 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             ``{"y": (1, 2, "1D"), "x": (-1,)}``; omitted columns get no lags. Generated features are named
             ``f"{column}_lag_{steps}"``. Duplicate lags of a column (after
             converting durations to steps) raise an error. Defaults to `(1,)`.
-        regressor (RegressorMixin, optional): A scikit-learn compatible
+        regressor (RegressorMixin): A scikit-learn compatible
             regressor used for numeric targets. Defaults to ``FastRidge``.
-        classifier (ClassifierMixin, optional): A scikit-learn compatible
+        classifier (ClassifierMixin): A scikit-learn compatible
             classifier used for categorical or string targets. Defaults to
             ``DecisionTreeClassifier(max_depth=4)``.
-        min_samples_train (int, optional): The minimum number of samples
+        min_samples_train (int): The minimum number of samples
             required to train a model. Defaults to `None`, which resolves to
             20 (see :class:`~datafiller.multivariate.imputer.MultivariateImputer`).
-        fallback (str or None, optional): What to do with cells no model could
+        fallback (str or None): What to do with cells no model could
             impute. ``"simple"`` (default) fills them with the column mean (mode
             for categoricals); ``None`` leaves them as NaN.
-        rng (int, optional): A seed for the random number generator. This is
+        rng (int): A seed for the random number generator. This is
             used by the default categorical classifier. Defaults to None.
-        verbose (int, optional): The verbosity level. Defaults to 0.
-        scoring (str or callable, optional): The scoring function to use for
+        verbose (int): The verbosity level. Defaults to 0.
+        scoring (str or Callable): The scoring function to use for
             feature selection. If 'default', the default scoring function is
             used. If a callable, it must take two arguments (the data matrix
             and the columns to impute) and return a score matrix.
             Defaults to 'default'.
-        interpolate_gaps_less_than (int, optional): The maximum length of
+        interpolate_gaps_less_than (int): The maximum length of
             gaps to interpolate linearly. If None, no linear interpolation is
-            performed. Defaults to None.
-        device (str, optional): Device used to solve the default ridge
+            performed. Only selected rows and columns are filled, using the
+            surrounding observed values for interpolation. Defaults to None.
+        device (str): Device used to solve the default ridge
             models, e.g. ``"cuda"``. Requires the optional PyTorch dependency
             (``pip install datafiller[gpu]``). If None (default), the pure
             NumPy/Numba CPU path is used. See
             :class:`~datafiller.multivariate.imputer.MultivariateImputer`.
-        add_time_features (bool, optional): Whether to add deterministic time
+        add_time_features (bool): Whether to add deterministic time
             features before model-based imputation. These features are fully
             observed after reindexing, which helps fill contiguous missing
             timestamp blocks. Defaults to True.
-        time_column (str, optional): Name of the Date or Datetime column that
+        time_column (str): Name of the Date or Datetime column that
             represents time for a Polars DataFrame. Required for Polars input;
             pandas input continues to use its DatetimeIndex. Defaults to None.
 
@@ -220,6 +225,12 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             raise DataFillerValueError("time_column must be a string or None.")
         if "lags" in params:
             _validate_lags(params["lags"])
+        if "min_samples_train" in params:
+            MultivariateImputer._resolve_min_samples_train(params["min_samples_train"])
+        if "fallback" in params:
+            MultivariateImputer._validate_fallback(params["fallback"])
+        if "scoring" in params:
+            MultivariateImputer._validate_scoring(params["scoring"])
         rebuild_keys = {
             "regressor",
             "classifier",
@@ -248,11 +259,6 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             or is_string_dtype(dtype)
             or is_bool_dtype(dtype)
         )
-
-    @classmethod
-    def _is_categorical_series(cls, series: pd.Series) -> bool:
-        """Whether a column must be imputed with the classifier (same rule as MultivariateImputer)."""
-        return cls._is_categorical_dtype(series.dtype)
 
     @staticmethod
     def _infer_frequency(index: pd.DatetimeIndex) -> object:
@@ -418,6 +424,8 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             "columns": list(df.columns),
             "data_columns": data_columns,
             "dtypes": dict(df.schema),
+            "original_frame": df,
+            "original_positions": {timestamp: i for i, timestamp in enumerate(index)},
             "original_timestamps": set(index),
             "null_timestamps": {
                 column: set(index[df.get_column(column).is_null().to_numpy()]) for column in data_columns
@@ -442,7 +450,14 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
 
             values = df[column].to_numpy()
             if dtype.is_integer():
-                decoded = [None if np.isnan(value) else int(np.rint(value)) for value in values]
+                original_values = metadata["original_frame"].get_column(column).to_list()
+                decoded = []
+                for timestamp, value in zip(timestamps, values, strict=True):
+                    position = metadata["original_positions"].get(timestamp)
+                    original = None if position is None else original_values[position]
+                    decoded.append(
+                        original if original is not None else None if np.isnan(value) else int(np.rint(value))
+                    )
             else:
                 null_timestamps = metadata["null_timestamps"][column]
                 original_timestamps = metadata["original_timestamps"]
@@ -456,24 +471,58 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         return pl.DataFrame(output).select(metadata["columns"])
 
     @staticmethod
-    def _polars_rows_to_indices(rows_to_impute, index: pd.DatetimeIndex):
-        """Resolve Polars row positions or timestamp values on the regularized grid."""
-        if rows_to_impute is None or isinstance(rows_to_impute, (int, np.integer)):
-            return rows_to_impute
+    def _rows_to_indices(rows_to_impute, index: pd.DatetimeIndex):
+        """Resolve and validate row positions or timestamps on the regularized grid."""
+        if rows_to_impute is None:
+            return None
 
+        values: list[Any]
         if isinstance(rows_to_impute, str) or not isinstance(rows_to_impute, Iterable):
             values = [rows_to_impute]
         else:
             values = list(rows_to_impute)
-        if all(isinstance(value, (int, np.integer)) for value in values):
-            return values
+        if all(isinstance(value, (int, np.integer)) and not isinstance(value, (bool, np.bool_)) for value in values):
+            if not all(0 <= value < len(index) for value in values):
+                raise DataFillerValueError(
+                    f"rows_to_impute must contain integer positions between 0 and {len(index) - 1}."
+                )
+            return np.asarray(values, dtype=np.int64)
+        if any(isinstance(value, (int, float, np.number, bool)) for value in values):
+            raise DataFillerValueError("rows_to_impute must contain integer positions or timestamp values.")
 
-        timestamps = pd.DatetimeIndex(pd.to_datetime(values))
+        try:
+            timestamps = pd.DatetimeIndex(pd.to_datetime(values))
+        except (TypeError, ValueError) as exc:
+            raise DataFillerValueError("rows_to_impute must contain integer positions or timestamp values.") from exc
         positions = index.get_indexer(timestamps)
         if np.any(positions == -1):
             missing = [value for value, position in zip(values, positions, strict=True) if position == -1]
             raise DataFillerValueError(f"Timestamps not found in the regularized time grid: {missing}")
         return positions
+
+    @staticmethod
+    def _cols_to_indices(cols_to_impute, columns: pd.Index) -> np.ndarray:
+        """Validate selectors against original columns, before features are added."""
+        if cols_to_impute is None:
+            return np.arange(len(columns))
+        requested = (
+            list(cols_to_impute)
+            if isinstance(cols_to_impute, Iterable) and not isinstance(cols_to_impute, str)
+            else [cols_to_impute]
+        )
+        positions = []
+        for column in requested:
+            if isinstance(column, (int, np.integer)) and not isinstance(column, (bool, np.bool_)):
+                if not 0 <= column < len(columns):
+                    raise DataFillerValueError(f"Column position {column} is outside the original columns.")
+                positions.append(int(column))
+            elif isinstance(column, str):
+                if column not in columns:
+                    raise DataFillerValueError(f"Column name {column!r} was not found in the original columns.")
+                positions.append(columns.get_loc(column))
+            else:
+                raise DataFillerValueError("cols_to_impute must be an int, str, or an iterable of ints or strs.")
+        return np.asarray(positions, dtype=np.int64)
 
     def _impute_frame_with_categoricals(
         self,
@@ -481,8 +530,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         rows_to_impute,
         cols_to_impute,
         n_nearest_features,
-        before,
-        after,
+        lag_pairs,
     ) -> pd.DataFrame:
         """Impute a mixed numeric/categorical frame through the pandas MultivariateImputer path.
 
@@ -495,7 +543,6 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         original_cols = df.columns
 
         frames = [df]
-        lag_pairs = self._resolve_lags(original_cols, df.index)
         if lag_pairs:
             names = list(original_cols)
             frames.append(
@@ -509,54 +556,19 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             frames.append(self._make_time_features(df.index, reserved_names=reserved_names))
 
         feature_df = pd.concat(frames, axis=1)
-        if not feature_df.columns.is_unique:
-            duplicated = feature_df.columns[feature_df.columns.duplicated()].unique().tolist()
-            raise DataFillerValueError(
-                f"Column names collide with generated lag feature names: {duplicated}. "
-                "Rename the offending columns before imputation."
-            )
         # Equivalent of dropna(how="all", axis=1) on generated features; original
         # columns are always kept so the output layout matches the input.
         keep = feature_df.notna().any(axis=0)
         keep[original_cols] = True
         feature_df = feature_df.loc[:, keep]
 
-        if cols_to_impute is None:
-            cols_to_impute_names = list(original_cols)
-        else:
-            if isinstance(cols_to_impute, (int, str)):
-                cols_to_impute = [cols_to_impute]
-            cols_to_impute_names = []
-            for c in cols_to_impute:
-                if isinstance(c, int):
-                    cols_to_impute_names.append(original_cols[c])
-                elif isinstance(c, str):
-                    cols_to_impute_names.append(c)
-                else:
-                    raise DataFillerValueError("cols_to_impute must be an int, str, or an iterable of ints or strs.")
-
         # The pandas MultivariateImputer path expects row labels, not positions.
-        if rows_to_impute is not None:
-            if isinstance(rows_to_impute, (pd.DatetimeIndex, pd.TimedeltaIndex, pd.PeriodIndex)):
-                row_labels = rows_to_impute
-            elif isinstance(rows_to_impute, int):
-                row_labels = df.index[[rows_to_impute]]
-            else:
-                row_labels = df.index[np.asarray(list(rows_to_impute), dtype=np.int64)]
-        elif before is not None or after is not None:
-            mask = pd.Series(True, index=df.index)
-            if before is not None and (before_timestamp := pd.to_datetime(str(before))):
-                mask &= df.index < before_timestamp
-            if after is not None and (after_timestamp := pd.to_datetime(str(after))):
-                mask &= df.index > after_timestamp
-            row_labels = df.index[mask]
-        else:
-            row_labels = None
+        row_labels = None if rows_to_impute is None else df.index[rows_to_impute]
 
         imputed_df = self.multivariate_imputer(
             feature_df,
             rows_to_impute=row_labels,
-            cols_to_impute=cols_to_impute_names,
+            cols_to_impute=original_cols[cols_to_impute],
             n_nearest_features=n_nearest_features,
         )
         # The multivariate pandas path already maps features back to column names.
@@ -597,10 +609,12 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
                 used. Defaults to None.
             before: A timestamp-like object. If specified, only rows
                 before this timestamp are imputed. Can be anything that can be
-                parsed by ``lambda x: pd.to_datetime(str(x))``. Defaults to None.
+                parsed by ``lambda x: pd.to_datetime(str(x))``. Ignored when
+                ``rows_to_impute`` is supplied. Defaults to None.
             after: A timestamp-like object. If specified, only rows
                 after this timestamp are imputed. Can be anything that can be
-                parsed by ``lambda x: pd.to_datetime(str(x))``. Defaults to None.
+                parsed by ``lambda x: pd.to_datetime(str(x))``. Ignored when
+                ``rows_to_impute`` is supplied. Defaults to None.
 
         Returns:
             The imputed DataFrame, matching the input dataframe implementation.
@@ -617,7 +631,6 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         is_polars_df = is_polars_dataframe(df)
         polars_metadata = None
         if is_polars_df:
-            polars_rows_to_impute = rows_to_impute
             df, polars_metadata = self._polars_to_pandas(df)
         else:
             if not isinstance(df, pd.DataFrame):
@@ -629,7 +642,6 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         assert isinstance(df.index, pd.DatetimeIndex)
 
         if is_polars_df:
-            rows_to_impute = self._polars_rows_to_indices(polars_rows_to_impute, df.index)
             if cols_to_impute is not None:
                 requested_columns = (
                     [cols_to_impute]
@@ -640,25 +652,58 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
                     raise DataFillerValueError("cols_to_impute must contain column names for a Polars DataFrame.")
                 if self.time_column in requested_columns:
                     raise DataFillerValueError("The Polars time_column cannot be imputed.")
+                cols_to_impute = [column for column in requested_columns if isinstance(column, str)]
             if isinstance(self.lags, Mapping) and self.time_column in self.lags:
                 raise DataFillerValueError("The Polars time_column cannot be lagged.")
 
+        if not df.columns.is_unique:
+            raise DataFillerValueError("TimeSeriesImputer requires unique column names.")
+        cols_to_impute_indices = self._cols_to_indices(cols_to_impute, df.columns)
+        rows_to_impute = self._rows_to_indices(rows_to_impute, df.index)
+        if rows_to_impute is None and (before is not None or after is not None):
+            mask = np.ones(len(df), dtype=bool)
+            if before is not None:
+                mask &= df.index < pd.to_datetime(str(before))
+            if after is not None:
+                mask &= df.index > pd.to_datetime(str(after))
+            rows_to_impute = np.flatnonzero(mask)
+
+        lag_pairs = self._resolve_lags(df.columns, df.index)
+        feature_names = list(df.columns)
+        feature_names.extend(f"{feature_names[j]}_lag_{steps}" for j, steps in lag_pairs)
+        feature_index = pd.Index(feature_names)
+        if not feature_index.is_unique:
+            duplicated = feature_index[feature_index.duplicated()].unique().tolist()
+            raise DataFillerValueError(
+                f"Column names collide with generated lag feature names: {duplicated}. "
+                "Rename the offending columns before imputation."
+            )
+
         dtypes = df.dtypes
+        if any(not self._is_categorical_dtype(dtype) and not is_numeric_dtype(dtype) for dtype in dtypes):
+            raise DataFillerValueError("TimeSeriesImputer requires numeric columns or categorical-like columns.")
         if self.interpolate_gaps_less_than is not None:
             df = df.copy()
-            for col in df.columns:
+            selected_rows = np.arange(len(df)) if rows_to_impute is None else rows_to_impute
+            for col in df.columns[cols_to_impute_indices]:
                 if not self._is_categorical_dtype(dtypes[col]):
-                    df[col] = interpolate_small_gaps(df[col], self.interpolate_gaps_less_than)
+                    interpolated = interpolate_small_gaps(df[col], self.interpolate_gaps_less_than)
+                    filled = df[col].isna().to_numpy() & interpolated.notna().to_numpy()
+                    filled_rows = selected_rows[filled[selected_rows]]
+                    if len(filled_rows):
+                        predictions = self.multivariate_imputer._cast_series_to_dtype(
+                            interpolated.iloc[filled_rows], dtypes[col]
+                        )
+                        df.loc[df.index[filled_rows], col] = predictions
 
         if any(self._is_categorical_dtype(dtype) for dtype in dtypes):
             # Polars input cannot reach this branch: _polars_to_pandas enforces numeric columns.
             return self._impute_frame_with_categoricals(
                 df,
                 rows_to_impute=rows_to_impute,
-                cols_to_impute=cols_to_impute,
+                cols_to_impute=cols_to_impute_indices,
                 n_nearest_features=n_nearest_features,
-                before=before,
-                after=after,
+                lag_pairs=lag_pairs,
             )
 
         original_cols = df.columns
@@ -667,16 +712,13 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         values = df.to_numpy()
         if not np.issubdtype(values.dtype, np.floating):
             try:
-                values = values.astype(np.float64)
+                values = df.to_numpy(dtype=np.float64, na_value=np.nan)
             except (TypeError, ValueError) as exc:
                 raise DataFillerValueError("TimeSeriesImputer requires numeric columns.") from exc
 
         # Create autoregressive (and optional calendar) features directly in a
         # preallocated matrix instead of concatenating shifted DataFrames.
         assert isinstance(df.index, pd.DatetimeIndex)
-        lag_pairs = self._resolve_lags(original_cols, df.index)
-        feature_names = list(original_cols)
-        feature_names.extend(f"{feature_names[j]}_lag_{steps}" for j, steps in lag_pairs)
         if self.add_time_features:
             time_features = self._make_time_features(df.index, reserved_names=feature_names)
             feature_names.extend(time_features.columns)
@@ -697,38 +739,6 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             matrix = np.ascontiguousarray(matrix[:, keep])
             feature_names = [name for name, keep_col in zip(feature_names, keep, strict=True) if keep_col]
         feature_index = pd.Index(feature_names)
-
-        # Process cols_to_impute
-        if cols_to_impute is None:
-            cols_to_impute_indices = np.arange(n_original_cols)
-        else:
-            if isinstance(cols_to_impute, (int, str)):
-                cols_to_impute = [cols_to_impute]
-
-            indices = []
-            for c in cols_to_impute:
-                if isinstance(c, int):
-                    indices.append(c)
-                elif isinstance(c, str):
-                    indices.append(original_cols.get_loc(c))
-                else:
-                    raise DataFillerValueError("cols_to_impute must be an int, str, or an iterable of ints or strs.")
-            cols_to_impute_indices = np.array(indices)
-
-        # Process rows_to_impute
-        if rows_to_impute is not None:
-            if isinstance(rows_to_impute, (pd.DatetimeIndex, pd.TimedeltaIndex, pd.PeriodIndex)):
-                rows_to_impute = df.index.get_indexer(rows_to_impute)
-            elif isinstance(rows_to_impute, int):
-                rows_to_impute = [rows_to_impute]
-        elif rows_to_impute is None:
-            if before is not None or after is not None:
-                mask = pd.Series(True, index=df.index)
-                if before is not None and (before_timestamp := pd.to_datetime(str(before))):
-                    mask &= df.index < before_timestamp
-                if after is not None and (after_timestamp := pd.to_datetime(str(after))):
-                    mask &= df.index > after_timestamp
-                rows_to_impute = np.where(mask)[0]
 
         # Impute the data
         imputed_data = self.multivariate_imputer(
@@ -751,17 +761,18 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
 
         # Return a DataFrame with the same columns as the original. Slice the
         # array before wrapping so pandas does not copy the full feature matrix.
-        if feature_index.is_unique:
-            positions = feature_index.get_indexer(original_cols)
-            if (positions >= 0).all():
-                columns_out = gather_columns_transposed(imputed_data, positions.astype(np.int64)).T
-                result = pd.DataFrame(columns_out, index=df.index, columns=original_cols)
-                if is_polars_df:
-                    assert polars_metadata is not None
-                    return self._pandas_to_polars(result, polars_metadata)
-                return result
-        imputed_df = pd.DataFrame(imputed_data, index=df.index, columns=feature_index)
-        result = imputed_df[original_cols]
+        columns_out = gather_columns_transposed(imputed_data, np.arange(n_original_cols, dtype=np.int64)).T
+        result = pd.DataFrame(columns_out, index=df.index, columns=original_cols)
+        for column in original_cols:
+            if is_integer_dtype(dtypes[column]):
+                series = df[column].copy()
+                filled = series.isna().to_numpy() & result[column].notna().to_numpy()
+                if filled.any():
+                    predictions = self.multivariate_imputer._cast_series_to_dtype(
+                        result.loc[filled, column], dtypes[column]
+                    )
+                    series.iloc[np.flatnonzero(filled)] = predictions.to_numpy()
+                result[column] = series
         if is_polars_df:
             assert polars_metadata is not None
             return self._pandas_to_polars(result, polars_metadata)

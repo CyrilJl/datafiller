@@ -10,9 +10,25 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
+    "sphinx.ext.intersphinx",
     "sphinxawesome_theme",
     "myst_parser",
 ]
+
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable", None),
+    "sklearn": ("https://scikit-learn.org/stable", None),
+}
+napoleon_preprocess_types = True
+napoleon_type_aliases = {
+    "np.ndarray": "numpy.ndarray",
+    "RegressorMixin": "sklearn.base.RegressorMixin",
+    "ClassifierMixin": "sklearn.base.ClassifierMixin",
+    "Callable": "collections.abc.Callable",
+    "Iterable": "collections.abc.Iterable",
+    "Mapping": "collections.abc.Mapping",
+}
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]

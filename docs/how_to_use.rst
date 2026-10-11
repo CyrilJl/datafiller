@@ -181,6 +181,16 @@ largest NaN-free rectangle, preferring ones that keep at least ``min_samples_tra
 are filled with the column mean (most frequent category for categoricals) with the default ``fallback="simple"`` — pass ``fallback=None`` to leave them as NaN.
 See :doc:`algorithm` for details.
 
+Using scikit-learn pipelines
+============================
+
+Both imputers provide ``fit`` and ``transform`` and can be placed in a scikit-learn pipeline. ``fit`` is a no-op: every
+``transform`` call fits models on the data it receives. The imputers do not learn models on a training dataset and reuse them
+to fill a separate test dataset. Account for this behaviour when designing cross-validation or forecasting evaluations.
+
+Observed values are preserved in the output. With the default fallback, selected missing cells are filled whenever their
+column has an observed value; entirely missing columns remain missing.
+
 GPU Acceleration
 ================
 
@@ -208,6 +218,12 @@ complete rows transparently fall back to the CPU implementation.
 
 Time Series Imputer
 ********************
+
+Row positions refer to the regularized output grid. Pandas and Polars accept timestamp values as an alternative to positions.
+Pandas column selectors may use names or non-negative positions in the original columns; Polars selectors use names.
+Generated lag and calendar features cannot be targeted. An explicit ``rows_to_impute`` takes precedence over ``before`` and
+``after``. These selectors also restrict linear interpolation: surrounding observations provide the interpolation context,
+but only selected cells are filled.
 
 The ``TimeSeriesImputer`` is a wrapper around the ``MultivariateImputer`` that is specifically designed for time series data. It can infer a regular ``DatetimeIndex`` frequency, reinsert missing timestamp rows inside the observed range, and add low-cost calendar features that remain observed through contiguous gaps.
 
