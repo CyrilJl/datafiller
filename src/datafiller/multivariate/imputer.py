@@ -611,7 +611,7 @@ class MultivariateImputer(BaseEstimator, TransformerMixin):
                 continue
 
             if not use_gram:
-                epoch += 1
+                epoch = np.int64(epoch + 1)
                 excluded_cols_local = local_cols[~pattern].astype(np.uint32, copy=False)
                 rows = complete_rows_excluding(
                     row_nan_count, col_ptr, col_rows, excluded_cols_local, hits, stamp, epoch
