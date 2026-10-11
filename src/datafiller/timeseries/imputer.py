@@ -1,8 +1,10 @@
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping
+from datetime import timedelta
 
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_bool_dtype, is_object_dtype, is_string_dtype
+from pandas.tseries.frequencies import to_offset
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin
 
 from ..exceptions import DataFillerTypeError, DataFillerValueError
@@ -10,6 +12,63 @@ from ..multivariate._numba_utils import all_nan_columns, gather_columns_transpos
 from ..multivariate._polars import is_polars_dataframe, is_polars_lazyframe
 from ..multivariate.imputer import MultivariateImputer
 from ._utils import build_lag_matrix, interpolate_small_gaps
+
+LagSpec = int | str | timedelta
+_LAGS_TYPE_MESSAGE = (
+    "lags must be an iterable of integers or durations, or a mapping from column names to such iterables."
+)
+
+
+def _is_duration(lag) -> bool:
+    return isinstance(lag, (str, timedelta, np.timedelta64))
+
+
+def _is_number(text: str) -> bool:
+    try:
+        float(text)
+    except ValueError:
+        return False
+    return True
+
+
+def _validate_lag_values(values) -> None:
+    """Check one iterable of lags: ints or duration-likes, none of them zero."""
+    if isinstance(values, (str, bytes)) or not isinstance(values, Iterable):
+        raise DataFillerValueError(_LAGS_TYPE_MESSAGE)
+    if isinstance(values, Iterator):
+        # An iterator would be exhausted here and seen empty when the lags are resolved.
+        raise DataFillerValueError("lags must be a collection such as a list or tuple, not an iterator.")
+    for lag in values:
+        if isinstance(lag, (bool, np.bool_)):
+            raise DataFillerValueError(_LAGS_TYPE_MESSAGE)
+        # np.timedelta64 subclasses np.integer, so durations are checked first.
+        if _is_duration(lag):
+            if isinstance(lag, str) and _is_number(lag):
+                raise DataFillerValueError(
+                    f"Duration lag {lag!r} has no unit; write integer steps as int or add a unit, e.g. '24h'."
+                )
+            try:
+                delta = pd.Timedelta(lag)
+            except (TypeError, ValueError) as exc:
+                raise DataFillerValueError(f"{_LAGS_TYPE_MESSAGE} Could not parse {lag!r} as a duration.") from exc
+            if pd.isna(delta):
+                raise DataFillerValueError(f"{_LAGS_TYPE_MESSAGE} Could not parse {lag!r} as a duration.")
+            if delta == pd.Timedelta(0):
+                raise DataFillerValueError("lags cannot contain 0.")
+        elif isinstance(lag, (int, np.integer)):
+            if lag == 0:
+                raise DataFillerValueError("lags cannot contain 0.")
+        else:
+            raise DataFillerValueError(_LAGS_TYPE_MESSAGE)
+
+
+def _validate_lags(lags) -> None:
+    """Validate `lags` without the data: types and zero lags. Mapping keys are checked against the columns."""
+    if isinstance(lags, Mapping):
+        for values in lags.values():
+            _validate_lag_values(values)
+    else:
+        _validate_lag_values(lags)
 
 
 class TimeSeriesImputer(BaseEstimator, TransformerMixin):
@@ -26,10 +85,17 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
     like any other column. Polars input remains numeric-only.
 
     Args:
-        lags (Iterable[int], optional): An iterable of integers specifying
-            the lags and leads to create as autoregressive features. Positive
-            integers create lags (e.g., `t-1`), and negative integers create
-            leads (e.g., `t+1`). Defaults to `(1,)`.
+        lags (Iterable or Mapping, optional): The lags and leads to create as
+            autoregressive features. Positive values create lags (e.g., `t-1`),
+            negative values create leads (e.g., `t+1`). Each lag is an integer
+            number of steps or a duration (a string such as ``"24h"``, or a
+            ``pd.Timedelta``), which must be a non-zero whole number of steps of
+            the index frequency. An iterable applies the same lags to every
+            column. A mapping from column labels (not positions) to iterables
+            lags only the columns it names, e.g.
+            ``{"y": (1, 2, "1D"), "x": (-1,)}``; omitted columns get no lags. Generated features are named
+            ``f"{column}_lag_{steps}"``. Duplicate lags of a column (after
+            converting durations to steps) raise an error. Defaults to `(1,)`.
         regressor (RegressorMixin, optional): A scikit-learn compatible
             regressor used for numeric targets. Defaults to ``FastRidge``.
         classifier (ClassifierMixin, optional): A scikit-learn compatible
@@ -71,6 +137,10 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             populated when `n_nearest_features` is not None. The keys and
             values are the column names, which will include the lagged/lead
             features created during the imputation process.
+        feature_names_ (list or None): The names of the feature matrix the
+            last call fitted its models on: the original columns, then the
+            lag/lead features, then the calendar features. Generated features
+            that are entirely missing are dropped. None before the first call.
 
     .. code-block:: python
 
@@ -92,7 +162,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
 
     def __init__(
         self,
-        lags: Iterable[int] = (1,),
+        lags: Iterable[LagSpec] | Mapping[Hashable, Iterable[LagSpec]] = (1,),
         regressor: RegressorMixin | None = None,
         classifier: ClassifierMixin | None = None,
         min_samples_train: int | None = None,
@@ -105,10 +175,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         device: str | None = None,
         time_column: str | None = None,
     ):
-        if not isinstance(lags, Iterable) or not all(isinstance(i, int) for i in lags):
-            raise DataFillerValueError("lags must be an iterable of integers.")
-        if 0 in lags:
-            raise DataFillerValueError("lags cannot contain 0.")
+        _validate_lags(lags)
         if time_column is not None and not isinstance(time_column, str):
             raise DataFillerValueError("time_column must be a string or None.")
         self.lags = lags
@@ -125,6 +192,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         self.time_column = time_column
         self._build_multivariate_imputer()
         self.imputation_features_ = None
+        self.feature_names_ = None
 
     def _build_multivariate_imputer(self) -> None:
         self.multivariate_imputer = MultivariateImputer(
@@ -150,6 +218,8 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         """Set parameters and refresh dependent objects."""
         if "time_column" in params and params["time_column"] is not None and not isinstance(params["time_column"], str):
             raise DataFillerValueError("time_column must be a string or None.")
+        if "lags" in params:
+            _validate_lags(params["lags"])
         rebuild_keys = {
             "regressor",
             "classifier",
@@ -221,6 +291,63 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         if len(full_index) == len(df.index) and full_index.equals(df.index):
             return df
         return df.reindex(full_index)
+
+    @classmethod
+    def _duration_step_ns(cls, index: pd.DatetimeIndex, lag) -> int:
+        """Nominal length of one step of the index frequency, in nanoseconds, to convert duration lags."""
+        offset = to_offset(cls._infer_frequency(index))  # ty: ignore[no-matching-overload]
+        try:
+            return int(offset.nanos)
+        except ValueError:
+            pass
+        # Anchored offsets such as weekly ones are not fixed for pandas but can still have a constant step.
+        deltas = np.unique(np.diff(index.as_unit("ns").asi8))
+        if deltas.size != 1:
+            raise DataFillerValueError(
+                f"Duration lag {lag!r} needs an index with a fixed-length frequency, got {offset.freqstr!r}."
+            )
+        return int(deltas[0])
+
+    def _resolve_lags(self, columns: pd.Index, index: pd.DatetimeIndex) -> list[tuple[int, int]]:
+        """Expand `lags` into `(source column position, steps)` pairs on the regularized index.
+
+        An iterable expands lag-major, column-minor (one block of every column
+        per lag), the historical layout; a mapping expands in frame column
+        order, then in the order the lags were written.
+        """
+        step_ns = None
+
+        def to_steps(values, column=None) -> list[int]:
+            nonlocal step_ns
+            resolved = []
+            for lag in values:
+                if _is_duration(lag):
+                    if step_ns is None:
+                        step_ns = self._duration_step_ns(index, lag)
+                    steps, remainder = divmod(pd.Timedelta(lag).as_unit("ns").value, step_ns)
+                    if remainder or not steps:
+                        raise DataFillerValueError(
+                            f"Lag {lag!r} is not a non-zero whole number of steps of the index frequency "
+                            f"({pd.Timedelta(step_ns, unit='ns')})."
+                        )
+                else:
+                    steps = int(lag)
+                if steps in resolved:
+                    where = "" if column is None else f" of column {column!r}"
+                    raise DataFillerValueError(f"Lag {lag!r}{where} duplicates another lag of {steps} steps.")
+                resolved.append(steps)
+            return resolved
+
+        lags = self.lags
+        if not isinstance(lags, Mapping):
+            return [(j, steps) for steps in to_steps(lags) for j in range(len(columns))]
+
+        unknown = [column for column in lags if column not in columns]
+        if unknown:
+            raise DataFillerValueError(f"lags refers to columns not found in the data: {unknown}")
+        return [
+            (j, steps) for j, column in enumerate(columns) if column in lags for steps in to_steps(lags[column], column)
+        ]
 
     @staticmethod
     def _make_time_features(index: pd.DatetimeIndex, reserved_names: Iterable[str] = ()) -> pd.DataFrame:
@@ -368,10 +495,15 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         original_cols = df.columns
 
         frames = [df]
-        for lag in self.lags:
-            shifted = df.shift(lag)
-            shifted.columns = pd.Index([f"{col}_lag_{lag}" for col in original_cols])
-            frames.append(shifted)
+        lag_pairs = self._resolve_lags(original_cols, df.index)
+        if lag_pairs:
+            names = list(original_cols)
+            frames.append(
+                pd.concat(
+                    [df.iloc[:, j].shift(steps).rename(f"{names[j]}_lag_{steps}") for j, steps in lag_pairs],
+                    axis=1,
+                )
+            )
         if self.add_time_features:
             reserved_names = [name for frame in frames for name in frame.columns]
             frames.append(self._make_time_features(df.index, reserved_names=reserved_names))
@@ -429,6 +561,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
         )
         # The multivariate pandas path already maps features back to column names.
         self.imputation_features_ = self.multivariate_imputer.imputation_features_
+        self.feature_names_ = feature_df.columns.tolist()
 
         return imputed_df[original_cols]
 
@@ -507,6 +640,8 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
                     raise DataFillerValueError("cols_to_impute must contain column names for a Polars DataFrame.")
                 if self.time_column in requested_columns:
                     raise DataFillerValueError("The Polars time_column cannot be imputed.")
+            if isinstance(self.lags, Mapping) and self.time_column in self.lags:
+                raise DataFillerValueError("The Polars time_column cannot be lagged.")
 
         dtypes = df.dtypes
         if self.interpolate_gaps_less_than is not None:
@@ -538,19 +673,20 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
 
         # Create autoregressive (and optional calendar) features directly in a
         # preallocated matrix instead of concatenating shifted DataFrames.
-        lags = list(self.lags)
+        assert isinstance(df.index, pd.DatetimeIndex)
+        lag_pairs = self._resolve_lags(original_cols, df.index)
         feature_names = list(original_cols)
-        for lag in lags:
-            feature_names.extend(f"{col}_lag_{lag}" for col in original_cols)
+        feature_names.extend(f"{feature_names[j]}_lag_{steps}" for j, steps in lag_pairs)
         if self.add_time_features:
-            assert isinstance(df.index, pd.DatetimeIndex)
             time_features = self._make_time_features(df.index, reserved_names=feature_names)
             feature_names.extend(time_features.columns)
             time_values = time_features.to_numpy(dtype=values.dtype)
         else:
             time_values = np.empty((len(df), 0), dtype=values.dtype)
 
-        matrix = build_lag_matrix(values, np.asarray(lags, dtype=np.int64), time_values)
+        sources = np.array([j for j, _ in lag_pairs], dtype=np.int64)
+        shifts = np.array([steps for _, steps in lag_pairs], dtype=np.int64)
+        matrix = build_lag_matrix(values, sources, shifts, time_values)
 
         # Equivalent of dropna(how="all", axis=1) on the generated features. The
         # original columns are always kept so the output layout matches the input,
@@ -605,6 +741,7 @@ class TimeSeriesImputer(BaseEstimator, TransformerMixin):
             _owns_input=True,
         )
         self.imputation_features_ = self.multivariate_imputer.imputation_features_
+        self.feature_names_ = feature_names
 
         if self.imputation_features_ is not None:
             self.imputation_features_ = {

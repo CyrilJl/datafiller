@@ -6,42 +6,63 @@ from ..exceptions import DataFillerTypeError
 
 
 @njit(boundscheck=False, cache=True, parallel=True)
-def build_lag_matrix(values: np.ndarray, lags: np.ndarray, time_features: np.ndarray) -> np.ndarray:
+def build_lag_matrix(
+    values: np.ndarray, sources: np.ndarray, shifts: np.ndarray, time_features: np.ndarray
+) -> np.ndarray:
     """Assemble the autoregressive feature matrix in a single pass.
 
-    Column layout is the original series, then one block per entry of `lags`
-    (positive shifts back in time, negative forward), then the calendar
-    features. Writing row by row keeps every store contiguous, where filling
-    one column block at a time walks the output with a large stride.
+    Column layout is the original series, then one column per `(sources[f],
+    shifts[f])` pair, then the calendar features. Lag feature `f` reads
+    `values[i - shifts[f], sources[f]]` (positive shifts back in time, negative
+    forward). Writing row by row keeps every store contiguous, where filling
+    one column at a time walks the output with a large stride.
 
     Args:
         values: The observed series, shape `(n_rows, n_series)`.
-        lags: Shifts to materialize. Out-of-range positions become NaN.
+        sources: Column of `values` each lag feature reads.
+        shifts: Shift of each lag feature, in steps. Out-of-range positions become NaN.
         time_features: Fully observed calendar features, shape `(n_rows, n_time)`.
 
     Returns:
-        The feature matrix, shape `(n_rows, n_series * (1 + len(lags)) + n_time)`.
+        The feature matrix, shape `(n_rows, n_series + len(shifts) + n_time)`.
     """
     n_rows, n_series = values.shape
-    n_lags = len(lags)
+    n_lagged = len(shifts)
     n_time = time_features.shape[1]
-    out = np.empty((n_rows, n_series * (1 + n_lags) + n_time), dtype=values.dtype)
+
+    # Coalesce consecutive features that read adjacent columns at the same shift
+    # into runs, so the uniform layout (every column per lag) copies whole row
+    # blocks instead of gathering one value at a time.
+    run_first = np.empty(n_lagged, dtype=np.int64)
+    run_length = np.empty(n_lagged, dtype=np.int64)
+    n_runs = 0
+    f = 0
+    while f < n_lagged:
+        g = f + 1
+        while g < n_lagged and shifts[g] == shifts[f] and sources[g] == sources[g - 1] + 1:
+            g += 1
+        run_first[n_runs] = f
+        run_length[n_runs] = g - f
+        n_runs += 1
+        f = g
+
+    out = np.empty((n_rows, n_series + n_lagged + n_time), dtype=values.dtype)
     for i in prange(n_rows):  # ty: ignore[not-iterable]
         target = out[i]
         source = values[i]
         for j in range(n_series):
             target[j] = source[j]
-        for t in range(n_lags):
-            offset = n_series * (t + 1)
-            shifted = i - lags[t]
+        for r in range(n_runs):
+            first = run_first[r]
+            offset = n_series + first
+            shifted = i - shifts[first]
+            length = run_length[r]
             if 0 <= shifted < n_rows:
-                lagged = values[shifted]
-                for j in range(n_series):
-                    target[offset + j] = lagged[j]
+                column = sources[first]
+                target[offset : offset + length] = values[shifted, column : column + length]
             else:
-                for j in range(n_series):
-                    target[offset + j] = np.nan
-        offset = n_series * (1 + n_lags)
+                target[offset : offset + length] = np.nan
+        offset = n_series + n_lagged
         calendar = time_features[i]
         for j in range(n_time):
             target[offset + j] = calendar[j]

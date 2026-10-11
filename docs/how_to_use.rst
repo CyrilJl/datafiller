@@ -234,6 +234,67 @@ names and cannot target the timestamp column.
 
     df_imputed = TimeSeriesImputer(time_column="timestamp", lags=[1, -1])(df)
 
+Lags per column
+===============
+
+An iterable ``lags`` gives every column the same lags, so with ``n`` columns and ``k`` lags each model sees ``n * (1 + k)`` series
+features. Often only some columns benefit from lags, typically the target's own history. A mapping lags only the columns it names; the
+others get none. Its keys are column labels, not positions: ``{0: (1,)}`` refers to a column named ``0`` (a name that is not in the
+data raises an error). With Polars, the ``time_column`` cannot be a key.
+
+.. code-block:: python
+
+    TimeSeriesImputer(lags=(1, 2))                                        # every column
+    TimeSeriesImputer(lags={"y": (1, 2, 3, 24)})                          # only y
+    TimeSeriesImputer(lags={"y": ("1h", "1D"), "x": (-1,)})               # durations, and a lead on x
+    TimeSeriesImputer(lags={**{c: (1,) for c in df}, "y": range(1, 25)})  # a default plus an override
+
+A lag is an integer number of steps or a duration (``"24h"``, ``pd.Timedelta(minutes=30)``). Durations are converted with the nominal length
+of the inferred index frequency (``"1D"`` is one step of a daily index, even across a daylight saving change), must be a non-zero
+whole number of steps, and need a unit (``"24"`` is rejected); negative durations are leads. Generated features are named after the
+number of steps, ``f"{column}_lag_{steps}"``: on an hourly index ``"1D"`` gives ``y_lag_24`` and ``"-1h"`` gives ``y_lag_-1``. A column
+given the same lag twice (``(1, "1h")`` on an hourly index) raises an error.
+
+After a call, ``feature_names_`` lists the feature matrix the models were fitted on: the original columns, then the lagged columns, then
+the calendar features. An iterable produces one block of every column per lag (``x_lag_1, y_lag_1, x_lag_2, y_lag_2``); a mapping
+follows the column order of the data, then the order of each column's lags.
+
+The mapping form turns the imputer into a direct multi-horizon forecaster. Blank the horizon after a cut-off and impute it with ``after=``:
+at ``h`` steps after the cut-off, lag ``k`` of the target is observed only if ``h <= k``, so each horizon step gets its own missingness
+pattern and its own model. Lagging only the target keeps those models small; lagging every exogenous column multiplies the features and
+can overfit short histories.
+
+.. code-block:: python
+
+    import numpy as np
+    import pandas as pd
+    from datafiller import TimeSeriesImputer
+
+    # Four weeks of hourly measurements `y` and two exogenous model forecasts.
+    rng = np.random.default_rng(0)
+    index = pd.date_range("2025-01-01", periods=24 * 28, freq="h")
+    daily = np.sin(2 * np.pi * np.arange(len(index)) / 24)
+    df = pd.DataFrame(
+        {
+            "y": daily + 0.3 * rng.normal(size=len(index)).cumsum() / 10,
+            "forecast_a": daily + 0.2 * rng.normal(size=len(index)),
+            "forecast_b": daily + 0.4 * rng.normal(size=len(index)),
+        },
+        index=index,
+    )
+
+    # Blank the 15 hours after the cut-off: they are the horizon to forecast.
+    cutoff = index[-16]
+    df.loc[df.index > cutoff, "y"] = np.nan
+
+    # Lag the target only; give the forecasts a one-hour lead.
+    imputer = TimeSeriesImputer(lags={"y": (1, 2, 3, "1D"), "forecast_a": (-1,), "forecast_b": (-1,)})
+    imputed = imputer(df, cols_to_impute=["y"], after=cutoff)
+    forecast = imputed.loc[imputed.index > cutoff, "y"]  # the 15 forecast hours
+    print(imputer.feature_names_)
+    # ['y', 'forecast_a', 'forecast_b', 'y_lag_1', 'y_lag_2', 'y_lag_3', 'y_lag_24',
+    #  'forecast_a_lag_-1', 'forecast_b_lag_-1', '__time_trend', ...]
+
 PEMS-BAY Example
 ================
 
@@ -323,7 +384,7 @@ Parameters
 ----------
 
 Initialization parameters include ``lags`` for autoregressive features (positive integers create lags like `t-1`, negative integers create
-leads like `t+1`), ``regressor`` for the numeric model, ``interpolate_gaps_less_than`` to pre-fill short gaps, ``add_time_features`` to
+leads like `t+1`; durations and per-column mappings are accepted, see `Lags per column`_), ``regressor`` for the numeric model, ``interpolate_gaps_less_than`` to pre-fill short gaps, ``add_time_features`` to
 include deterministic calendar/trend predictors, and the shared controls ``scoring``, ``rng``, ``min_samples_train``, ``fallback``, and
 ``verbose`` (the training-data selection path described above applies unchanged). Call parameters include ``rows_to_impute`` and ``cols_to_impute`` to target
 subsets, ``n_nearest_features`` to limit features used for imputation (recommended to reduce computation time), and ``before``/``after`` to

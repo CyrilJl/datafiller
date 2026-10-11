@@ -74,7 +74,7 @@ print(X_imputed)
 
 ### Imputing a Time Series DataFrame
 
-The ``TimeSeriesImputer`` is designed to work with pandas DataFrames that have a ``DatetimeIndex``. It automatically creates autoregressive features (lags and leads) to improve imputation accuracy, and can infer a regular frequency to reinsert missing timestamp blocks before imputation.
+The ``TimeSeriesImputer`` is designed to work with pandas DataFrames that have a ``DatetimeIndex``. It automatically creates autoregressive features (lags and leads) to improve imputation accuracy, and can infer a regular frequency to reinsert missing timestamp blocks before imputation. Lags can also be set per column and as durations: ``lags={"y": (1, 2, "1D")}`` lags only ``y``.
 
 ```python
 import pandas as pd

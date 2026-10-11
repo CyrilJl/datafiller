@@ -150,3 +150,37 @@ question; keep the supporting scripts in `perf/` (gitignored) and cite them.
   is closer to the exact answer when they differ. Differences that scale with column σ are the right
   metric; relative-to-value inflates cells that happen to sit near zero. Top-k nearest-feature
   selection was verified bit-identical, so score changes never moved which predictors were used.
+
+### 2026-10-10 — Per-column and duration lags in `TimeSeriesImputer`
+- Problem: iterable `lags` lag every column, so `n` columns × `k` lags give each model `n * (1 + k)`
+  series features. In an air-quality station forecasting study (one measured series `y` plus 11 exogenous model forecasts,
+  hourly; the 15 h after a cut-off blanked and imputed; 73 forecast days over 2025 × 66 stations ×
+  7 quantities; score = mean RMSE relative to the raw ensemble, lower is better):
+
+  | Context, alpha | Lags 1, 2, 3, 24 on every column (64 features) | Same lags on `y` only (20 features) |
+  | -------------- | ---------------------------------------------- | ----------------------------------- |
+  | 56 days, 0.01  | 0.765                                          | 0.713                               |
+  | 56 days, 10    | 0.720                                          | 0.699                               |
+  | 56 days, 100   | 0.688                                          | 0.680                               |
+  | 14 days, 100   | 0.685                                          | 0.680                               |
+
+  Adding lags 48 and 168 to every column at alpha 0.01 jumped to 0.996 (66 lagged exogenous copies
+  overfitting 1,344 rows). `y`-only lags were also far less sensitive to alpha (0.680-0.713 against
+  0.685-0.765). Blanking the horizon makes the imputer a direct multi-horizon forecaster: lag `k` of
+  `y` is observed only for leads `<= k`, so each lead gets its own pattern and its own ridge.
+- Change: `lags` accepts a mapping `{column: lags}` (omitted columns get none) and durations
+  (`"24h"`, `pd.Timedelta`) converted with the step of the regularized index; `feature_names_` exposes
+  the generated matrix. Duplicate lags of a column after conversion now raise.
+- **A per-feature gather kernel cost +5% on float32 vs the block copy** (+17% in a first naive version
+  with a 2D-indexed load per value). The fix is not a separate uniform path: the kernel coalesces
+  consecutive `(source, shift)` pairs that read adjacent columns at the same shift into runs and copies
+  each run with a slice assignment. The uniform layout then becomes the old block copy (interleaved
+  A/B on 30,000×250 float32: ratio 0.996-0.998; float64 0.996), while mappings degrade to short runs.
+  Explicit `for m in range(run_length[r])` element loops stayed ~5% slower than the slice form.
+  Evidence: `perf/lags_kernel_ab.py`.
+- Reference TimeSeriesImputer benchmark (30,000×250, 3 targets, `n_nearest_features=35`, iterable
+  lags), ABBA-ordered processes, median of six 5-run medians: 0.250 s (v0.3.3) → 0.254 s (+1.6%),
+  peak working set 770 MB in both; imputations match the v0.3.3 golden values. Lagging only the 3
+  targets on the same data: 0.12 s, 425 MB. Evidence: `perf/lags_tsi_benchmark.py`.
+- Name construction trap: `f"{index[j]}_..."` over 1,500 pairs costs ~1 ms through
+  `pd.Index.__getitem__`, against ~0.2 ms on a plain list.
