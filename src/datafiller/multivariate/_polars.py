@@ -80,7 +80,6 @@ def encode_polars_dataframe(df) -> dict:
     categorical_targets: dict[int, list] = {}
     encoded_index_to_original: dict[int, str] = {}
     original_dtypes = dict(df.schema)
-    null_masks: dict[str, np.ndarray] = {}
     numeric_main_indices: list[int] = []
 
     for col in df.columns:
@@ -90,7 +89,6 @@ def encode_polars_dataframe(df) -> dict:
         encoded_index_to_original[main_idx] = col
         main_column_indices.append(main_idx)
         encoded_feature_names.append(col)
-        null_masks[col] = series.is_null().to_numpy()
 
         if _is_categorical_dtype(dtype) or dtype == pl.Null:
             categories = [] if dtype == pl.Null else series.drop_nulls().unique(maintain_order=True).to_list()
@@ -126,8 +124,8 @@ def encode_polars_dataframe(df) -> dict:
         "encoded_index_to_original": encoded_index_to_original,
         "original_columns": list(df.columns),
         "original_dtypes": original_dtypes,
-        "null_masks": null_masks,
         "numeric_main_indices": np.array(numeric_main_indices, dtype=np.int64),
+        "original_frame": df,
     }
 
 
@@ -148,12 +146,15 @@ def decode_polars_dataframe(x_imputed: np.ndarray, metadata: dict):
                     if np.isfinite(value):
                         decoded[row] = categories[int(value)]
             series = pl.Series(col, decoded, dtype=dtype)
-        elif dtype.is_integer():
-            decoded = [None if np.isnan(value) else int(np.rint(value)) for value in col_data]
-            series = pl.Series(col, decoded, dtype=dtype)
         else:
-            null_mask = metadata["null_masks"][col]
-            decoded = [None if null_mask[row] and np.isnan(value) else value for row, value in enumerate(col_data)]
+            original = metadata["original_frame"].get_column(col)
+            missing = original.is_null().to_numpy()
+            if dtype in (pl.Float32, pl.Float64):
+                missing = missing | original.is_nan().fill_null(False).to_numpy()
+            decoded = original.to_list()
+            for row in np.flatnonzero(missing & ~np.isnan(col_data)):
+                value = col_data[row]
+                decoded[row] = int(np.rint(value)) if dtype.is_integer() else float(value)
             series = pl.Series(col, decoded, dtype=dtype)
         series_out.append(series)
 

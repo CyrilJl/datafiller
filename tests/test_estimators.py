@@ -4,6 +4,12 @@ from sklearn.linear_model import Ridge
 
 from datafiller.estimators.elm import ExtremeLearningMachine
 from datafiller.estimators.ridge import FastRidge
+from datafiller.exceptions import DataFillerValueError
+
+
+def test_fast_ridge_predict_requires_fit():
+    with pytest.raises(DataFillerValueError, match="fitted before prediction"):
+        FastRidge().predict(np.ones((2, 3)))
 
 
 @pytest.fixture
@@ -39,6 +45,17 @@ def test_fast_ridge_no_intercept(data):
     sklearn_ridge.fit(X, y)
     sklearn_preds = sklearn_ridge.predict(X)
     np.testing.assert_allclose(preds, sklearn_preds, rtol=1e-4)
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_fast_ridge_stable_on_offset_data(dtype):
+    rng = np.random.default_rng(0)
+    X = (10000 + rng.normal(size=(100, 2))).astype(dtype)
+    y = 3 * (X[:, 0].astype(np.float64) - 10000) - 2 * (X[:, 1].astype(np.float64) - 10000)
+    actual = FastRidge().fit(X, y)
+    expected = Ridge(alpha=0.01).fit(X.astype(np.float64), y)
+    np.testing.assert_allclose(actual.coef_, expected.coef_, rtol=1e-10)
+    np.testing.assert_allclose(actual.predict(X), expected.predict(X.astype(np.float64)), atol=1e-9)
 
 
 def test_elm_fit_predict(data):

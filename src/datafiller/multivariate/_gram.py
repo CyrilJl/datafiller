@@ -66,14 +66,14 @@ def gather_augmented(x: np.ndarray, rows: np.ndarray, cols: np.ndarray, target_c
     """
     n_rows = len(rows)
     n_cols = len(cols)
-    out = np.empty((n_rows, n_cols + 2), dtype=np.float32)
+    out = np.empty((n_rows, n_cols + 2), dtype=x.dtype)
     for i in prange(n_rows):
         source = x[rows[i]]
         target = out[i]
         for j in range(n_cols):
-            target[j] = np.float32(source[cols[j]])
-        target[n_cols] = np.float32(source[target_col])
-        target[n_cols + 1] = np.float32(1.0)
+            target[j] = source[cols[j]]
+        target[n_cols] = source[target_col]
+        target[n_cols + 1] = 1.0
     return out
 
 
@@ -269,7 +269,7 @@ def solve_patterns(
     min_samples_train: int,
     norm_mean: float,
     norm_scale: float,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> np.ndarray:
     """Solve and apply the ridge model of every missingness pattern.
 
     For each pattern, assembles the Gram matrix of the training rows complete on
@@ -283,8 +283,7 @@ def solve_patterns(
     NaNs in the excluded columns rather than the number of training rows.
 
     Returns:
-        `(n_samples, solved)`: how many training rows each pattern found, and
-        whether it reached `min_samples_train` and was therefore imputed here.
+        Whether each pattern reached `min_samples_train` and was imputed here.
         Unsolved patterns are left to the caller's `optimask` fallback.
     """
     n_patterns, k = patterns.shape
@@ -293,7 +292,6 @@ def solve_patterns(
     n_groups = len(group_counts)
     n_rows = len(row_words)
 
-    n_samples = np.zeros(n_patterns, dtype=np.int64)
     solved = np.zeros(n_patterns, dtype=np.bool_)
 
     # Patterns are independent: each owns its scratch buffers and writes to a
@@ -345,7 +343,6 @@ def solve_patterns(
                     n_matched_rows += 1
         total += n_matched_rows
 
-        n_samples[p] = total
         if total < min_samples_train:
             continue
 
@@ -411,4 +408,4 @@ def solve_patterns(
             x_imputed[imputable_rows[r], col] = (accumulator + intercept) * norm_scale + norm_mean
         solved[p] = True
 
-    return n_samples, solved
+    return solved

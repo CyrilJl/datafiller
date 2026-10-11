@@ -5,6 +5,75 @@ import pytest
 from datafiller.timeseries import TimeSeriesImputer
 
 
+@pytest.mark.parametrize("mixed", [False, True])
+def test_lag_name_collision_is_rejected(mixed):
+    df = pd.DataFrame(
+        {"y": np.arange(30.0), "y_lag_1": np.arange(30.0)}, index=pd.date_range("2024-01-01", periods=30, freq="h")
+    )
+    if mixed:
+        df["category"] = "a"
+    with pytest.raises(ValueError, match="collide"):
+        TimeSeriesImputer(lags={"y": [1]})(df)
+
+
+@pytest.mark.parametrize("mixed", [False, True])
+def test_temporal_selectors_and_interpolation_respect_target_cells(mixed):
+    index = pd.date_range("2024-01-01", periods=30, freq="h")
+    df = pd.DataFrame({"y": np.arange(30.0), "x": np.arange(30.0)}, index=index)
+    df.iloc[[5, 12], :] = np.nan
+    if mixed:
+        df["category"] = "a"
+    original = df.copy(deep=True)
+    imputer = TimeSeriesImputer(interpolate_gaps_less_than=1, min_samples_train=1000, fallback=None)
+    for rows in ([5], [np.int64(5)], [index[5]], [str(index[5])], index[[5]], index[5]):
+        actual = imputer(df, rows_to_impute=rows, cols_to_impute=["y"])
+        assert actual.loc[index[5], "y"] == 5.0
+        assert pd.isna(actual.loc[index[5], "x"])
+        assert actual.loc[index[12], ["y", "x"]].isna().all()
+    bounded = imputer(df, after=index[11], before=index[13], cols_to_impute=["y"])
+    assert bounded.loc[index[12], "y"] == 12.0
+    assert bounded.loc[index[5], ["y", "x"]].isna().all()
+    assert pd.isna(bounded.loc[index[12], "x"])
+    empty = imputer(df, rows_to_impute=[], cols_to_impute=["y"])
+    assert empty.loc[index[[5, 12]], ["y", "x"]].isna().all().all()
+    pd.testing.assert_frame_equal(df, original)
+
+
+@pytest.mark.parametrize("mixed", [False, True])
+@pytest.mark.parametrize("columns", [[-1], [2], [True], ["y_lag_1"], ["missing"]])
+def test_invalid_temporal_column_selectors_are_rejected(mixed, columns):
+    df = pd.DataFrame({"y": np.arange(30.0)}, index=pd.date_range("2024-01-01", periods=30, freq="h"))
+    if mixed:
+        df["category"] = "a"
+    with pytest.raises(ValueError):
+        TimeSeriesImputer()(df, cols_to_impute=columns)
+
+
+@pytest.mark.parametrize("rows", [[-1], [30], [True], [1.5], ["2030-01-01"]])
+def test_invalid_temporal_row_selectors_are_rejected(rows):
+    df = pd.DataFrame({"y": np.arange(30.0)}, index=pd.date_range("2024-01-01", periods=30, freq="h"))
+    with pytest.raises(ValueError):
+        TimeSeriesImputer()(df, rows_to_impute=rows)
+
+
+def test_timeseries_preserves_large_observed_integers():
+    index = pd.date_range("2024-01-01", periods=3, freq="h")
+    df = pd.DataFrame(
+        {
+            "integer": pd.array([16777217, None, 16777219], dtype="Int64"),
+            "unsigned": np.array([2**63 + 1, 2**63 + 3, 2**63 + 5], dtype=np.uint64),
+        },
+        index=index,
+    )
+    actual = TimeSeriesImputer()(df, cols_to_impute=["integer"])
+    pd.testing.assert_series_equal(actual["unsigned"], df["unsigned"])
+    pd.testing.assert_series_equal(actual["integer"].iloc[[0, 2]], df["integer"].iloc[[0, 2]])
+    assert pd.notna(actual["integer"].iloc[1])
+    interpolated = TimeSeriesImputer(interpolate_gaps_less_than=1)(df)
+    pd.testing.assert_series_equal(interpolated["unsigned"], df["unsigned"])
+    pd.testing.assert_series_equal(interpolated["integer"].iloc[[0, 2]], df["integer"].iloc[[0, 2]])
+
+
 @pytest.fixture
 def nan_df():
     rng = pd.date_range("2020-01-01", periods=10, freq="D")
@@ -430,7 +499,7 @@ def test_timeseries_imputer_feature_names_kept_when_a_call_fails():
     imputer(df)
     expected = imputer.feature_names_
     imputer.set_params(lags=(1, 2))
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError, match="original columns"):
         imputer(df, cols_to_impute=["missing"])
     assert imputer.feature_names_ == expected
 

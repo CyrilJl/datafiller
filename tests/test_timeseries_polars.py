@@ -9,6 +9,25 @@ from datafiller import TimeSeriesImputer
 pl = pytest.importorskip("polars")
 
 
+def test_polars_timeseries_preserves_large_observed_integers_and_interpolation_scope():
+    timestamps = [datetime(2024, 1, 1) + timedelta(hours=i) for i in range(5)]
+    df = pl.DataFrame(
+        {
+            "timestamp": timestamps,
+            "y": [0.0, None, 2.0, None, 4.0],
+            "x": [0.0, None, 2.0, None, 4.0],
+            "unsigned": pl.Series([2**63 + 1 + 2 * i for i in range(5)], dtype=pl.UInt64),
+        }
+    )
+    actual = TimeSeriesImputer(
+        time_column="timestamp", interpolate_gaps_less_than=1, fallback=None, min_samples_train=1000
+    )(df, rows_to_impute=[timestamps[1]], cols_to_impute=["y"])
+    assert actual["unsigned"].to_list() == df["unsigned"].to_list()
+    assert actual["y"][1] == 1.0
+    assert actual["y"][3] is None
+    assert actual["x"].to_list() == df["x"].to_list()
+
+
 def _polars_time_series(periods=24):
     timestamps = [datetime(2024, 1, 1) + timedelta(hours=i) for i in range(periods)]
     values = np.arange(periods, dtype=float)

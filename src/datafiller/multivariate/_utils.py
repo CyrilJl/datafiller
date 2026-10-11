@@ -19,43 +19,32 @@ def _process_to_impute(size: int, to_impute: None | int | Iterable) -> np.ndarra
     """
     if to_impute is None:
         return np.arange(size)
-    if isinstance(to_impute, int):
+    if isinstance(to_impute, (int, np.integer)):
         return np.array([to_impute])
     else:
-        return np.array(to_impute)
+        return np.array(to_impute, dtype=np.int64)
 
 
 def _dataframe_rows_to_impute_to_indices(rows_to_impute, index):
     """Converts row labels to integer indices for a DataFrame."""
-    if rows_to_impute is None:
-        return np.arange(len(index))
-
-    to_impute_list = (
-        [rows_to_impute]
-        if not isinstance(rows_to_impute, Iterable) or isinstance(rows_to_impute, str)
-        else list(rows_to_impute)
-    )
-
-    if np.any((indexer := index.get_indexer(to_impute_list)) == -1):
-        missing = [label for label, i in zip(to_impute_list, indexer, strict=True) if i == -1]
-        raise DataFillerValueError(f"Row labels not found in index: {missing}")
-    return indexer
+    return _labels_to_indices(rows_to_impute, index, "Row labels not found in index")
 
 
 def _dataframe_cols_to_impute_to_indices(cols_to_impute, columns):
     """Converts column labels to integer indices for a DataFrame."""
-    if cols_to_impute is None:
-        return np.arange(len(columns))
+    return _labels_to_indices(cols_to_impute, columns, "Column labels not found in columns")
 
-    to_impute_list = (
-        [cols_to_impute]
-        if not isinstance(cols_to_impute, Iterable) or isinstance(cols_to_impute, str)
-        else list(cols_to_impute)
-    )
 
-    if np.any((indexer := columns.get_indexer(to_impute_list)) == -1):
+def _labels_to_indices(labels, index, message):
+    """Resolve a scalar or collection of labels against a unique index."""
+    if labels is None:
+        return np.arange(len(index))
+
+    to_impute_list = [labels] if not isinstance(labels, Iterable) or isinstance(labels, str) else list(labels)
+
+    if np.any((indexer := index.get_indexer(to_impute_list)) == -1):
         missing = [label for label, i in zip(to_impute_list, indexer, strict=True) if i == -1]
-        raise DataFillerValueError(f"Column labels not found in columns: {missing}")
+        raise DataFillerValueError(f"{message}: {missing}")
     return indexer
 
 
@@ -108,20 +97,23 @@ def _validate_input(
     m, n = x.shape
 
     if rows_to_impute is not None:
-        if isinstance(rows_to_impute, int):
+        if isinstance(rows_to_impute, (int, np.integer)):
             rows_to_impute = [rows_to_impute]
         if isinstance(rows_to_impute, np.ndarray):
             if not np.issubdtype(rows_to_impute.dtype, np.integer):
                 raise DataFillerValueError(
                     f"rows_to_impute must have an integer dtype, but got {rows_to_impute.dtype}."
                 )
-            if not (np.all(rows_to_impute >= 0) and np.all(rows_to_impute < m)):  # ty: ignore[unsupported-operator]
+            row_indices = np.asarray(rows_to_impute)
+            if row_indices.size and (row_indices.min() < 0 or row_indices.max() >= m):
                 raise DataFillerValueError(f"rows_to_impute must be a list of integers between 0 and {m - 1}.")
-        elif not all(isinstance(i, int) for i in rows_to_impute) or not all(0 <= i < m for i in rows_to_impute):
+        elif not all(isinstance(i, (int, np.integer)) for i in rows_to_impute) or not all(
+            0 <= i < m for i in rows_to_impute
+        ):
             raise DataFillerValueError(f"rows_to_impute must be a list of integers between 0 and {m - 1}.")
 
     if cols_to_impute is not None:
-        if isinstance(cols_to_impute, int):
+        if isinstance(cols_to_impute, (int, np.integer)):
             cols_to_impute = [cols_to_impute]
         if not all(isinstance(i, (int, np.integer)) for i in cols_to_impute) or not all(
             0 <= i < n for i in cols_to_impute
