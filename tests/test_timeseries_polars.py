@@ -39,6 +39,23 @@ def test_timeseries_imputer_polars_reinserts_missing_timestamp_block():
     assert imputed.filter(pl.col("timestamp").is_in(missing_timestamps))["value"].null_count() == 0
 
 
+def test_timeseries_imputer_polars_mapping_and_duration_lags():
+    df = _polars_time_series(48)
+    imputer = TimeSeriesImputer(time_column="timestamp", lags={"value": ("1h", 2)}, rng=0)
+    imputed = imputer(df)
+
+    expected = TimeSeriesImputer(time_column="timestamp", lags={"value": (1, 2)}, rng=0)(df)
+    assert imputed.equals(expected)
+    assert imputer.feature_names_[:4] == ["value", "other", "value_lag_1", "value_lag_2"]
+    assert imputed["value"].null_count() == 0
+
+
+def test_timeseries_imputer_polars_time_column_cannot_be_lagged():
+    df = _polars_time_series()
+    with pytest.raises(ValueError, match="time_column cannot be lagged"):
+        TimeSeriesImputer(time_column="timestamp", lags={"timestamp": (1,)})(df)
+
+
 def test_timeseries_imputer_polars_selectors_accept_positions_and_timestamps():
     df = _polars_time_series(12).with_columns(
         pl.when(pl.int_range(pl.len()) == 8).then(None).otherwise("other").alias("other")

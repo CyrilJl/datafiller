@@ -237,10 +237,295 @@ def test_timeseries_imputer_lag_matrix_matches_shifted_frames():
     index = pd.date_range("2020-01-01", periods=12, freq="D")
     rng = np.random.default_rng(1)
     df = pd.DataFrame(rng.normal(size=(12, 3)), index=index, columns=["a", "b", "c"])
+    df.iloc[[2, 7], [0, 2]] = np.nan
     lags = [1, 3, -2]
 
     values = df.to_numpy()
-    actual = build_lag_matrix(values, np.asarray(lags, dtype=np.int64), np.zeros((12, 0)))
+    sources = np.array([j for _ in lags for j in range(3)], dtype=np.int64)
+    shifts = np.array([lag for lag in lags for _ in range(3)], dtype=np.int64)
+    actual = build_lag_matrix(values, sources, shifts, np.zeros((12, 0)))
     expected = pd.concat([df] + [df.shift(lag) for lag in lags], axis=1).to_numpy()
 
-    np.testing.assert_allclose(actual, expected)
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_timeseries_imputer_lag_matrix_gathers_arbitrary_pairs():
+    """Non-uniform (source, shift) pairs, including ones the kernel can coalesce, match shifted series."""
+    from datafiller.timeseries._utils import build_lag_matrix
+
+    index = pd.date_range("2020-01-01", periods=15, freq="D")
+    rng = np.random.default_rng(2)
+    df = pd.DataFrame(rng.normal(size=(15, 4)), index=index, columns=["a", "b", "c", "d"])
+    df.iloc[[1, 9], [1, 3]] = np.nan
+    pairs = [(2, 1), (2, 4), (0, -1), (1, -1), (2, -1), (3, 2), (1, 2)]
+    time_features = rng.normal(size=(15, 2))
+
+    actual = build_lag_matrix(
+        df.to_numpy(),
+        np.array([j for j, _ in pairs], dtype=np.int64),
+        np.array([s for _, s in pairs], dtype=np.int64),
+        time_features,
+    )
+    expected = np.column_stack(
+        [df.to_numpy()] + [df.iloc[:, j].shift(s).to_numpy() for j, s in pairs] + [time_features]
+    )
+
+    np.testing.assert_array_equal(actual, expected)
+
+
+# ---------------------------------------------------------------------------
+# Per-column and duration lags
+# ---------------------------------------------------------------------------
+
+
+def _golden_frame():
+    rng = np.random.default_rng(42)
+    index = pd.date_range("2024-01-01", periods=60, freq="h")
+    t = np.arange(60)
+    df = pd.DataFrame(
+        {
+            "a": np.sin(2 * np.pi * t / 24) + 0.1 * rng.normal(size=60),
+            "b": 0.05 * t + 0.1 * rng.normal(size=60),
+            "c": rng.normal(size=60),
+        },
+        index=index,
+    )
+    mask = rng.random(df.shape) < 0.15
+    return df.mask(mask), mask
+
+
+def test_timeseries_imputer_iterable_lags_match_release_outputs():
+    """Imputations with iterable lags are frozen at their v0.3.3 values."""
+    # fmt: off
+    golden = np.array([
+        -0.00322389602661133, 0.6436628699302673, -0.2559864819049835, 0.9372581839561462, -0.6028189063072205,
+        0.3926200866699219, 0.26610419154167175, 0.56221604347229, 0.6828031539916992, 0.7291069626808167,
+        0.6086652874946594, 0.8718618154525757, 1.040459394454956, -0.3374992907047272, 0.2701805531978607,
+        -0.11822107434272766, -0.8562461137771606, 1.3699486255645752, -0.47643613815307617, 0.9691806435585022,
+        -0.838117241859436, 1.5978220701217651, 1.7331643104553223, 1.758444905281067, 0.02916000038385391,
+        0.20251613855361938, 1.9289424419403076, -0.9858637452125549, 2.474794864654541, 0.6967207789421082,
+        -0.07014787197113037, 2.5411877632141113, 2.7516815662384033, 2.965233087539673, -0.16304358839988708,
+    ])
+    # fmt: on
+    df, mask = _golden_frame()
+    imputer = TimeSeriesImputer(lags=(1, 2, -1), rng=0)
+    out = imputer(df)
+
+    np.testing.assert_allclose(out.to_numpy()[mask], golden, rtol=1e-5, atol=1e-6)
+    lagged = [f"{col}_lag_{lag}" for lag in (1, 2, -1) for col in "abc"]
+    assert imputer.feature_names_[:12] == ["a", "b", "c", *lagged]
+
+
+def _forecast_frame(seed=0, n=240, n_noise=8, horizon=12):
+    """A target driven by an exogenous series plus AR(1) noise, with its last `horizon` rows blanked."""
+    rng = np.random.default_rng(seed)
+    index = pd.date_range("2024-01-01", periods=n, freq="h")
+    driver = np.sin(2 * np.pi * np.arange(n) / 24) + 0.3 * rng.normal(size=n)
+    noise = np.zeros(n)
+    for t in range(1, n):
+        noise[t] = 0.8 * noise[t - 1] + 0.2 * rng.normal()
+    data = {"y": driver + noise, "driver": driver}
+    for k in range(n_noise):
+        data[f"x{k}"] = rng.normal(size=n)
+    df = pd.DataFrame(data, index=index)
+    truth = df["y"].iloc[-horizon:].copy()
+    df.iloc[-horizon:, 0] = np.nan
+    return df, truth, index[-horizon - 1]
+
+
+@pytest.mark.parametrize("n_nearest_features", [None, 3])
+def test_timeseries_imputer_mapping_lags_match_hand_made_columns(n_nearest_features):
+    df, _, _ = _forecast_frame(n_noise=2)
+    df.iloc[[30, 31, 100], 0] = np.nan
+    df.iloc[[50, 120], 1] = np.nan
+
+    mapped = TimeSeriesImputer(lags={"y": (1, 2)}, rng=0)
+    out = mapped(df, cols_to_impute=["y"], n_nearest_features=n_nearest_features)
+
+    manual_df = df.assign(y_lag_1=df["y"].shift(1), y_lag_2=df["y"].shift(2))
+    manual = TimeSeriesImputer(lags=(), rng=0)
+    expected = manual(manual_df, cols_to_impute=["y"], n_nearest_features=n_nearest_features)
+
+    assert mapped.feature_names_ == manual.feature_names_
+    np.testing.assert_array_equal(out["y"].to_numpy(), expected["y"].to_numpy())
+    assert mapped.imputation_features_ == manual.imputation_features_
+
+
+def test_timeseries_imputer_mapping_lags_layout_and_unlagged_target():
+    df, _, _ = _forecast_frame(n_noise=1)
+    df.iloc[40:44, 1] = np.nan
+
+    imputer = TimeSeriesImputer(lags={"x0": (2, -1), "y": (1,)}, rng=0)
+    out = imputer(df)
+
+    # Frame column order, then lags in the order written; `driver` gets no lag.
+    assert imputer.feature_names_ == [
+        "y",
+        "driver",
+        "x0",
+        "y_lag_1",
+        "x0_lag_2",
+        "x0_lag_-1",
+        "__time_trend",
+        "__time_day_sin",
+        "__time_day_cos",
+        "__time_week_sin",
+        "__time_week_cos",
+    ]
+    assert not out["driver"].isna().any()
+
+
+def test_timeseries_imputer_mapping_empty_iterable_means_no_lags():
+    df, _, _ = _forecast_frame(n_noise=1)
+    imputer = TimeSeriesImputer(lags={"y": (), "x0": (1,)}, add_time_features=False)
+    imputer(df)
+    assert imputer.feature_names_ == ["y", "driver", "x0", "x0_lag_1"]
+
+
+def test_timeseries_imputer_duration_lags_equal_steps():
+    df, _, cutoff = _forecast_frame(n_noise=1)
+
+    by_steps = TimeSeriesImputer(lags={"y": (1, 24, -1), "driver": (2,)})
+    by_duration = TimeSeriesImputer(lags={"y": ("1h", "1D", pd.Timedelta(hours=-1)), "driver": (2,)})
+    expected = by_steps(df, after=cutoff)
+    actual = by_duration(df, after=cutoff)
+
+    assert by_duration.feature_names_ == by_steps.feature_names_
+    assert "y_lag_24" in by_duration.feature_names_
+    assert "y_lag_-1" in by_duration.feature_names_
+    pd.testing.assert_frame_equal(actual, expected)
+
+
+def test_timeseries_imputer_iterable_duration_lags_equal_steps():
+    df, _, _ = _forecast_frame(n_noise=1)
+    pd.testing.assert_frame_equal(
+        TimeSeriesImputer(lags=("2h", 1, "-1h", np.timedelta64(3, "h")))(df),
+        TimeSeriesImputer(lags=(2, 1, -1, 3))(df),
+    )
+
+
+@pytest.mark.parametrize(
+    ("index", "lag"),
+    [
+        # Daylight saving time makes one day 23 hours long; "1D" is still one step.
+        (pd.date_range("2024-03-25", periods=14, freq="D", tz="Europe/Paris"), "1D"),
+        (pd.date_range("2024-01-07", periods=14, freq="W"), "7D"),
+    ],
+)
+def test_timeseries_imputer_duration_lags_use_the_nominal_frequency(index, lag):
+    df = pd.DataFrame({"y": np.sin(np.arange(len(index), dtype=float)), "x": np.arange(len(index), dtype=float)})
+    df.index = index
+    df.iloc[[4, 9], 0] = np.nan
+    pd.testing.assert_frame_equal(
+        TimeSeriesImputer(lags={"y": (lag,)})(df),
+        TimeSeriesImputer(lags={"y": (1,)})(df),
+    )
+
+
+def test_timeseries_imputer_feature_names_kept_when_a_call_fails():
+    df, _, _ = _forecast_frame(n_noise=1)
+    imputer = TimeSeriesImputer(lags=(1,))
+    imputer(df)
+    expected = imputer.feature_names_
+    imputer.set_params(lags=(1, 2))
+    with pytest.raises(KeyError):
+        imputer(df, cols_to_impute=["missing"])
+    assert imputer.feature_names_ == expected
+
+
+@pytest.mark.parametrize(
+    ("freq", "lag", "match"),
+    [
+        ("h", "90min", r"Lag '90min' is not a non-zero whole number of steps .*0 days 01:00:00"),
+        ("D", "1h", r"Lag '1h' is not a non-zero whole number of steps .*1 days"),
+        ("MS", "30D", r"Duration lag '30D' needs an index with a fixed-length frequency, got 'MS'"),
+    ],
+)
+def test_timeseries_imputer_duration_lag_must_be_whole_steps(freq, lag, match):
+    index = pd.date_range("2024-01-01", periods=30, freq=freq)
+    df = pd.DataFrame({"y": np.arange(30, dtype=float)}, index=index)
+    df.iloc[5, 0] = np.nan
+    with pytest.raises(ValueError, match=match):
+        TimeSeriesImputer(lags={"y": (lag,)})(df)
+    # Integer lags need no fixed-length frequency.
+    assert not TimeSeriesImputer(lags={"y": (1,)})(df).isna().any().any()
+
+
+def test_timeseries_imputer_duplicate_lags_raise():
+    df, _, _ = _forecast_frame(n_noise=1)
+    with pytest.raises(ValueError, match="duplicates another lag of 1 steps"):
+        TimeSeriesImputer(lags=(1, "1h"))(df)
+    with pytest.raises(ValueError, match="of column 'y' duplicates"):
+        TimeSeriesImputer(lags={"y": (24, "1D")})(df)
+    with pytest.raises(ValueError, match="duplicates"):
+        TimeSeriesImputer(lags=(1, 1))(df)
+
+
+def test_timeseries_imputer_unknown_lag_column_raises():
+    df, _, _ = _forecast_frame(n_noise=1)
+    with pytest.raises(ValueError, match=r"columns not found in the data: \['z'\]"):
+        TimeSeriesImputer(lags={"y": (1,), "z": (1,)})(df)
+    # Keys are labels, not positions.
+    with pytest.raises(ValueError, match=r"columns not found in the data: \[0\]"):
+        TimeSeriesImputer(lags={0: (1,)})(df)
+
+
+def test_timeseries_imputer_mapping_lags_with_integer_column_labels():
+    df, _, cutoff = _forecast_frame(n_noise=1)
+    renamed = df.set_axis(range(df.shape[1]), axis=1)
+    imputer = TimeSeriesImputer(lags={0: (1, "2h")})
+    out = imputer(renamed, after=cutoff)
+
+    assert imputer.feature_names_[: df.shape[1] + 2] == [*range(df.shape[1]), "0_lag_1", "0_lag_2"]
+    expected = TimeSeriesImputer(lags={df.columns[0]: (1, 2)})(df, after=cutoff)
+    np.testing.assert_array_equal(out.to_numpy(), expected.to_numpy())
+
+
+@pytest.mark.parametrize(
+    ("lags", "match"),
+    [
+        ({"y": (1, 0)}, "cannot contain 0"),
+        ((1, "0h"), "cannot contain 0"),
+        ({"y": 1}, "lags must be an iterable"),
+        ("1h", "lags must be an iterable"),
+        ((True,), "lags must be an iterable"),
+        (("soon",), "Could not parse 'soon'"),
+        (("24",), "'24' has no unit"),
+        ((lag for lag in (1, 2)), "not an iterator"),
+        ({"y": iter((1, 2))}, "not an iterator"),
+    ],
+)
+def test_timeseries_imputer_invalid_lag_specs(lags, match):
+    with pytest.raises(ValueError, match=match):
+        TimeSeriesImputer(lags=lags)
+    with pytest.raises(ValueError, match=match):
+        TimeSeriesImputer().set_params(lags=lags)
+
+
+def test_timeseries_imputer_categorical_path_with_mapping_lags(mixed_nan_df):
+    imputer = TimeSeriesImputer(lags={"level": (1, -1), "value": ("2h",)}, rng=0)
+    out = imputer(mixed_nan_df)
+
+    assert imputer.feature_names_[:5] == ["value", "level", "value_lag_2", "level_lag_1", "level_lag_-1"]
+    assert isinstance(out["level"].dtype, pd.CategoricalDtype)
+    assert not out.isna().any().any()
+
+    # Same names and order as the numeric path for the same mapping.
+    numeric = mixed_nan_df.assign(level=(mixed_nan_df["level"] == "high").astype(float))
+    numeric_imputer = TimeSeriesImputer(lags={"level": (1, -1), "value": ("2h",)}, rng=0)
+    numeric_imputer(numeric)
+    assert numeric_imputer.feature_names_ == imputer.feature_names_
+
+
+def test_timeseries_imputer_target_only_lags_beat_lagging_every_column():
+    """Regression guard for the forecasting pattern, not a general claim."""
+    lags = (1, 2, 3, 24)
+    df, truth, cutoff = _forecast_frame(seed=0)
+
+    def rmse(imputer):
+        out = imputer(df, cols_to_impute=["y"], after=cutoff)
+        return float(np.sqrt(((out["y"].iloc[-len(truth) :] - truth) ** 2).mean()))
+
+    every_column = rmse(TimeSeriesImputer(lags=lags, add_time_features=False))
+    target_only = rmse(TimeSeriesImputer(lags={"y": lags}, add_time_features=False))
+    assert target_only < every_column

@@ -1,6 +1,13 @@
 Changelog
 =========
 
+v0.4.0 (unreleased)
+-------------------
+
+- ``TimeSeriesImputer(lags=...)`` accepts a mapping from column names to lags, which lags only the named columns (``lags={"y": (1, 2, 3, 24)}``), and durations as well as integer steps (``"24h"``, ``pd.Timedelta(minutes=30)``), converted with the inferred index frequency. Lagging only the target instead of every column lowered forecast error and its sensitivity to ``alpha`` in an hourly station-forecasting study (mean RMSE relative to the raw ensemble 0.765 → 0.713 at ``alpha=0.01``, 0.688 → 0.680 at ``alpha=100``). An iterable keeps its meaning and produces the same features and imputations as before.
+- New ``TimeSeriesImputer.feature_names_`` attribute: the names of the feature matrix the last call fitted its models on.
+- Behaviour change: duplicate lags of a column, including after converting durations to steps (``(1, "1h")`` on an hourly index), now raise ``DataFillerValueError`` instead of adding identical feature columns.
+
 v0.3.3 (2026-07-27)
 -------------------
 
