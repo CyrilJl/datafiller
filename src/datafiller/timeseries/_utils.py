@@ -47,7 +47,7 @@ def build_lag_matrix(
         f = g
 
     out = np.empty((n_rows, n_series + n_lagged + n_time), dtype=values.dtype)
-    for i in prange(n_rows):  # ty: ignore[not-iterable]
+    for i in prange(n_rows):
         target = out[i]
         source = values[i]
         for j in range(n_series):

@@ -43,7 +43,7 @@ def nan_mask_count_sum(x: np.ndarray, n_blocks: int) -> tuple[np.ndarray, np.nda
     counts_p = np.zeros((n_blocks, n), dtype=np.int64)
     sums_p = np.zeros((n_blocks, n), dtype=np.float64)
     inf_p = np.zeros(n_blocks, dtype=np.bool_)
-    for b in prange(n_blocks):  # ty: ignore[not-iterable]
+    for b in prange(n_blocks):
         i0 = b * block
         i1 = min(i0 + block, m)
         counts = counts_p[b]
@@ -72,7 +72,7 @@ def centered_sumsq(x: np.ndarray, means: np.ndarray, n_blocks: int) -> np.ndarra
     m, n = x.shape
     block = (m + n_blocks - 1) // n_blocks
     ss_p = np.zeros((n_blocks, n), dtype=np.float64)
-    for b in prange(n_blocks):  # ty: ignore[not-iterable]
+    for b in prange(n_blocks):
         i0 = b * block
         i1 = min(i0 + block, m)
         ss = ss_p[b]
@@ -97,7 +97,7 @@ def normalize_with_copy(x: np.ndarray, means: np.ndarray, scales: np.ndarray) ->
     m, n = x.shape
     normalized = np.empty((m, n), dtype=x.dtype)
     original = np.empty((m, n), dtype=x.dtype)
-    for i in prange(m):  # ty: ignore[not-iterable]
+    for i in prange(m):
         row = x[i]
         row_normalized = normalized[i]
         row_original = original[i]
@@ -118,7 +118,7 @@ def normalize_in_place_with_copy(x: np.ndarray, means: np.ndarray, scales: np.nd
     """
     m, n = x.shape
     original = np.empty((m, n), dtype=x.dtype)
-    for i in prange(m):  # ty: ignore[not-iterable]
+    for i in prange(m):
         row = x[i]
         row_original = original[i]
         for j in range(n):
@@ -133,7 +133,7 @@ def copy_matrix(x: np.ndarray) -> np.ndarray:
     """Parallel equivalent of `x.copy()` for large matrices."""
     m, n = x.shape
     out = np.empty((m, n), dtype=x.dtype)
-    for i in prange(m):  # ty: ignore[not-iterable]
+    for i in prange(m):
         row = x[i]
         out_row = out[i]
         for j in range(n):
@@ -155,7 +155,7 @@ def gather_columns_transposed(x: np.ndarray, cols: np.ndarray) -> np.ndarray:
     out = np.empty((n_cols, n_rows), dtype=x.dtype)
     block = 64
     n_row_blocks = (n_rows + block - 1) // block
-    for bi in prange(n_row_blocks):  # ty: ignore[not-iterable]
+    for bi in prange(n_row_blocks):
         row_start = bi * block
         row_end = min(row_start + block, n_rows)
         for col_start in range(0, n_cols, block):
@@ -211,7 +211,7 @@ def masked_cross_moments(
     cross_p = np.zeros((n_blocks, n_cols, n), dtype=np.float64)
     sumsq_p = np.zeros((n_blocks, n), dtype=np.float64)
     counts_p = np.zeros((n_blocks, n), dtype=np.int64)
-    for b in prange(n_blocks):  # ty: ignore[not-iterable]
+    for b in prange(n_blocks):
         i0 = b * block
         i1 = min(i0 + block, m)
         shared = shared_p[b]
