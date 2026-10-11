@@ -1,19 +1,34 @@
 Changelog
 =========
 
-v0.4.0 (unreleased)
+v0.4.0 (2026-10-11)
 -------------------
 
-- Fixed numerical cancellation in materialized ``FastRidge`` fits, including the ``optimask`` path with ``normalize=False``: fitting and prediction use float64, with centring before accumulation. Augmented training matrices preserve the input precision, and ELM chunked Gram products accumulate in float64.
-- Pandas and Polars numeric outputs preserve observed values exactly instead of round-tripping them through the float32 feature encoding, including integer time-series columns. Pandas categorical outputs also retain the original labels and dtypes.
-- Unified time-series selector validation: timestamp collections work for pandas input, column positions must refer to original columns, and generated lag-name collisions raise consistently for numeric and mixed inputs. Invalid selectors now raise ``DataFillerValueError``.
-- Linear interpolation respects the selected rows, columns, and time bounds.
-- Cloning ``MultivariateImputer`` retains the default classifier's response to ``rng`` updates. ``set_params`` validates scoring, and training thresholds must be positive integers.
-- Removed unused helpers and redundant pattern bookkeeping. Clarified pipeline and fallback behaviour, and resolved Sphinx type references through intersphinx.
+Added
+~~~~~
 
 - ``TimeSeriesImputer(lags=...)`` accepts a mapping from column names to lags, which lags only the named columns (``lags={"y": (1, 2, 3, 24)}``), and durations as well as integer steps (``"24h"``, ``pd.Timedelta(minutes=30)``), converted with the inferred index frequency. Lagging only the target instead of every column lowered forecast error and its sensitivity to ``alpha`` in an hourly station-forecasting study (mean RMSE relative to the raw ensemble 0.765 → 0.713 at ``alpha=0.01``, 0.688 → 0.680 at ``alpha=100``). An iterable keeps its meaning and produces the same features and imputations as before.
-- New ``TimeSeriesImputer.feature_names_`` attribute: the names of the feature matrix the last call fitted its models on.
+- ``TimeSeriesImputer.feature_names_`` attribute: the names of the feature matrix the last call fitted its models on.
+
+Changed
+~~~~~~~
+
 - Behaviour change: duplicate lags of a column, including after converting durations to steps (``(1, "1h")`` on an hourly index), now raise ``DataFillerValueError`` instead of adding identical feature columns.
+- Invalid time-series selectors now raise ``DataFillerValueError``. Timestamp collections work for pandas input, column positions must refer to original columns, and generated lag-name collisions raise consistently for numeric and mixed inputs.
+- Training thresholds must be positive integers, and ``set_params`` validates ``scoring``.
+
+Fixed
+~~~~~
+
+- Numerical cancellation in materialized ``FastRidge`` fits, including the ``optimask`` path with ``normalize=False``: fitting and prediction use float64, with centring before accumulation. ELM chunked Gram products accumulate in float64. With uncentred predictors around 10,000, a prediction of -11,424 is now -1.417633, matching a float64 reference.
+- Pandas and Polars numeric outputs preserve observed values exactly instead of round-tripping them through the float32 feature encoding (e.g. 16,777,217 became 16,777,216), including integer time-series columns. Pandas categorical outputs retain the original labels and dtypes.
+- Linear interpolation respects the selected rows, columns, and time bounds.
+- Cloning ``MultivariateImputer`` retains the default classifier's response to ``rng`` updates.
+
+Internal
+~~~~~~~~
+
+- Removed unused helpers and redundant pattern bookkeeping; clarified pipeline and fallback documentation; Sphinx type references resolve through intersphinx.
 
 v0.3.3 (2026-07-27)
 -------------------
