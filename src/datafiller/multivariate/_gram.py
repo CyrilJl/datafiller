@@ -67,7 +67,7 @@ def gather_augmented(x: np.ndarray, rows: np.ndarray, cols: np.ndarray, target_c
     n_rows = len(rows)
     n_cols = len(cols)
     out = np.empty((n_rows, n_cols + 2), dtype=np.float32)
-    for i in prange(n_rows):  # ty: ignore[not-iterable]
+    for i in prange(n_rows):
         source = x[rows[i]]
         target = out[i]
         for j in range(n_cols):
@@ -87,7 +87,7 @@ def group_grams(z_aug: np.ndarray, group_rows: np.ndarray, group_ptr: np.ndarray
     """
     n_groups = len(group_ptr) - 1
     grams = np.zeros((n_groups, width, width), dtype=np.float64)
-    for g in prange(n_groups):  # ty: ignore[not-iterable]
+    for g in prange(n_groups):
         gram = grams[g]
         values = np.empty(width, dtype=np.float64)
         for t in range(group_ptr[g], group_ptr[g + 1]):
@@ -298,7 +298,7 @@ def solve_patterns(
 
     # Patterns are independent: each owns its scratch buffers and writes to a
     # disjoint set of prediction rows.
-    for p in prange(n_patterns):  # ty: ignore[not-iterable]
+    for p in prange(n_patterns):
         gram = np.empty((width, width), dtype=np.float64)
         usable = np.empty(k, dtype=np.int64)
         matched_groups = np.empty(max(n_groups, 1), dtype=np.int64)
